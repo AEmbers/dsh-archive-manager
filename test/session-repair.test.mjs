@@ -96,16 +96,16 @@ test("修复接受宿主当前代际，拒绝第三代之前的格式", async ()
     const next = { ...fakeFormat, currentVersion: 4, createRestore(header) {
       const events = [];
       return { decodeRow: (row) => {
-        // 模拟 V4 原生来源准入：kind 不能为空，也不能是字面量 plugin
         const source = row?.data?.source;
-        if (source && (typeof source.kind !== 'string' || source.kind === 'plugin')) throw new Error('format v4 message requires a producer-owned source kind');
+        if (source && source.kind !== 'plugin') throw new Error('migration input must keep the released plugin wrapper');
         events.push(row);
       }, finish: () => ({ header: { ...header, version: 4 }, events, inheritedEventCount: 0 }) };
     } };
     const plan = await prepareAutomationRepair({ directory, target: join(directory, "session.v4.jsonl"), sessionId: "a", format: next });
     await plan.publish(plan.token, async () => {});
     assert.match(await readFile(join(directory, "session.v4.jsonl"), "utf8"), /"version":4/);
-    assert.match(await readFile(join(directory, "session.v4.jsonl"), "utf8"), /"kind":"plugin:dsh-automation"/);
+    assert.match(await readFile(join(directory, "session.v4.jsonl"), "utf8"), /"kind":"plugin"/);
+    assert.match(await readFile(join(directory, "session.v4.jsonl"), "utf8"), /"plugin":"dsh-automation"/);
     await assert.rejects(prepareAutomationRepair({ directory, target: join(directory, "session.v2.jsonl"), sessionId: "a", format: { ...fakeFormat, currentVersion: 2 } }), /不支持此修复/);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -237,17 +237,24 @@ test("压缩修复必须独立写入头帧，并可纠正此前生成的单帧�
   }
 });
 
-test("V4 宿主使用生产者归属形状，避免被原生来源准入拒收", () => {
+test("旧版来源都写成宿主迁移链认识的 plugin 包装", () => {
   const source = { kind: "automation", automationId: "a", runId: "r", scheduledFor: "2026-09-01T00:00:00Z" };
   const rows = [{ type: "session", version: 0 }, { type: "user/message", data: { source, content: "正文" } }];
-  const v4 = normalizeAutomationSources(rows, 4);
-  assert.equal(v4.count, 1);
-  assert.equal(v4.rows[1].data.source.kind, "plugin:dsh-automation");
-  assert.equal(v4.rows[1].data.source.plugin, undefined);
-  assert.deepEqual(JSON.parse(v4.rows[1].data.source.summary), source);
-  assert.equal(v4.rows[1].data.content, "正文");
-  const v3 = normalizeAutomationSources(rows, 3);
-  assert.equal(v3.rows[1].data.source.kind, "plugin");
-  assert.equal(v3.rows[1].data.source.plugin, "dsh-automation");
-  assert.equal(normalizeAutomationSources(rows).rows[1].data.source.plugin, "dsh-automation");
+  const converted = normalizeAutomationSources(rows);
+  assert.equal(converted.count, 1);
+  assert.equal(converted.rows[1].data.source.kind, "plugin");
+  assert.equal(converted.rows[1].data.source.plugin, "dsh-automation");
+  assert.deepEqual(JSON.parse(converted.rows[1].data.source.summary), source);
+  assert.equal(converted.rows[1].data.content, "正文");
+  const hints = [
+    { type: "session", version: 0 },
+    { type: "user/message", data: { source: { kind: "instruction-hint", form: "hint" }, content: "参考文档" } },
+    { type: "user/message", data: { source: { kind: "delivery-contract", form: "hint" }, content: "工作约定" } },
+  ];
+  const repaired = normalizeAutomationSources(hints);
+  assert.equal(repaired.count, 2);
+  assert.deepEqual(repaired.rows[1].data.source, { kind: "plugin", plugin: "agent-instructions" });
+  assert.deepEqual(repaired.rows[2].data.source, { kind: "plugin", plugin: "delivery-contract" });
+  assert.equal(repaired.rows[1].data.content, "参考文档");
+  assert.throws(() => normalizeAutomationSources([{ type: "session" }, { type: "user/message", data: { source: { kind: "instruction-hint", form: "hint", extra: 1 } } }]), /形状未知/);
 });

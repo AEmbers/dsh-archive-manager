@@ -194,7 +194,7 @@ export function classifySessionError(error: unknown) {
   const message = errorMessage(error);
   const descriptions: Record<string, [string, string]> = {
     'repair-frame': ['旧版修复生成的压缩格式不符合宿主要求', '重新诊断可纠正压缩帧格式，原始日志保持不变。'],
-    'legacy-source': ['旧版消息来源不受新版 DSH 支持', '运行诊断，检查是否为可转换的旧自动化来源。'],
+    'legacy-source': ['旧版消息来源不受新版 DSH 支持', '运行诊断，检查是否为可转换的旧版来源。'],
     missing: ['会话日志或附件路径不存在', '检查原目录或磁盘是否可用；缺失正文不能通过重建缓存恢复。'],
     permission: ['没有权限读取会话文件', '检查目录访问权限、文件占用与安全软件限制，再重试。'],
     corrupt: ['会话日志可能损坏或未完整写入', '保留现有日志，检查磁盘和原始文件；不自动截断或删除消息。'],

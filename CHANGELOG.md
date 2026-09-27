@@ -4,6 +4,12 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.6 - 2026-09-27
+
+- Batch delete no longer rereads the remaining archived sessions, so cleanup is faster.
+- Diagnosis and repair can convert early reference-document and working-agreement sources as well as legacy automation sources. Message text and the original log stay unchanged.
+- On DSH 0.1.7, legacy-source repair lets the host perform the format conversion.
+
 ## 1.0.5 - 2026-09-25
 
 - Works with DSH 0.1.7-rc.2. Versions that already worked still work.

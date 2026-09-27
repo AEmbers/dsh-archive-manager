@@ -31,8 +31,24 @@ export function decodeRepairLog(bytes: Buffer, compressed: boolean) {
   if (!text.endsWith('\n')) throw new Error('日志末尾不完整，不能自动修复');
   return text.trimEnd().split('\n').map(line => record(JSON.parse(line)));
 }
+interface LegacySourceRule { kind: string; convert(source: Record<string, unknown>): Record<string, unknown> }
+/** 只写出宿主迁移链认识的 plugin 包装。V4 的生产者归属由宿主 v3→v4 自己提升，提前改写会被更早的来源白名单拒绝。 */
+function pluginSource(plugin: string, extra: Record<string, unknown> = {}) {
+  return { kind: 'plugin', plugin, ...extra };
+}
+function assertKnownHintShape(source: Record<string, unknown>, kind: string) {
+  if (Object.keys(source).some(key => !['kind', 'form'].includes(key)) || source.form !== 'hint') throw new Error('旧版提示来源 ' + kind + ' 形状未知，需人工检查');
+}
+const LEGACY_SOURCE_RULES: readonly LegacySourceRule[] = [
+  { kind: 'automation', convert: source => pluginSource('dsh-automation', { form: 'notice', summary: JSON.stringify(source) }) },
+  // 早期工作区参考文档提示，现由 dsh-agent-instructions 承担。不保留 form:hint，v0 插件来源不接受该值。
+  { kind: 'instruction-hint', convert: source => { assertKnownHintShape(source, 'instruction-hint'); return pluginSource('agent-instructions'); } },
+  // 早期会话工作约定已被宿主移除，只保留归属，正文不动。
+  { kind: 'delivery-contract', convert: source => { assertKnownHintShape(source, 'delivery-contract'); return pluginSource('delivery-contract'); } },
+];
+const LEGACY_SOURCE_RULES_BY_KIND = new Map(LEGACY_SOURCE_RULES.map(rule => [rule.kind, rule]));
 /** 仅访问宿主定义的消息槽位，不递归改写正文或工具参数中的同名字段。 */
-export function normalizeAutomationSources(input: readonly Record<string, unknown>[], currentVersion = 3) {
+export function normalizeAutomationSources(input: readonly Record<string, unknown>[]) {
   const rows = structuredClone(input); let count = 0;
   const fix = (value: unknown) => {
     if (!value || typeof value !== 'object') return;
@@ -40,15 +56,13 @@ export function normalizeAutomationSources(input: readonly Record<string, unknow
     const candidate = message.source;
     if (!candidate || typeof candidate !== 'object') return;
     const source = record(candidate);
-    if (source?.kind !== 'automation') return;
-    if (Object.keys(source).some(key => !['kind','automationId','runId','scheduledFor'].includes(key)) ||
-        !['automationId','runId','scheduledFor'].every(key => typeof source[key] === 'string' && source[key].length > 0 && source[key].length < 512) || !Number.isFinite(Date.parse(String(source.scheduledFor)))) {
+    const rule = typeof source.kind === 'string' ? LEGACY_SOURCE_RULES_BY_KIND.get(source.kind) : undefined;
+    if (!rule) return;
+    if (rule.kind === 'automation' && (Object.keys(source).some(key => !['kind','automationId','runId','scheduledFor'].includes(key)) ||
+        !['automationId','runId','scheduledFor'].every(key => typeof source[key] === 'string' && source[key].length > 0 && source[key].length < 512) || !Number.isFinite(Date.parse(String(source.scheduledFor))))) {
       throw new Error('自动化归属信息不完整或存在未知字段，需人工检查');
     }
-    message.source = currentVersion >= 4
-      ? { kind: 'plugin:dsh-automation', form: 'notice', summary: JSON.stringify(source) }
-      : { kind: 'plugin', plugin: 'dsh-automation', form: 'notice', summary: JSON.stringify(source) };
-    count++;
+    message.source = rule.convert(source); count++;
   };
   for (const row of rows.slice(1)) {
     const data = row.data && typeof row.data === 'object' ? record(row.data) : {};
@@ -95,8 +109,8 @@ export async function prepareAutomationRepair({ directory, target, sessionId, fo
   const bytes = await readFile(source);
   const rows = decodeRepairLog(bytes, source.endsWith('.zstd'));
   if (rows[0]?.type !== 'session' || rows[0]?.version !== 0 || rows[0]?.id !== sessionId) throw new Error('日志身份或版本不匹配，不能自动修复');
-  const normalized = normalizeAutomationSources(rows, format.currentVersion);
-  if (!normalized.count) throw new Error('未找到符合修复规则的自动化来源');
+  const normalized = normalizeAutomationSources(rows);
+  if (!normalized.count) throw new Error('未找到符合修复规则的旧版来源');
   const restore = format.createRestore(normalized.rows[0]);
   normalized.rows.slice(1).forEach(row => restore.decodeRow(row));
   const artifact = restore.finish();
