@@ -100,6 +100,30 @@ test("日期范围写入开始和结束，清空时清除条件", () => {
   assert.deepEqual(calls, [["from", "2026-02-01"], ["to", "2026-02-03"], ["clear"]]);
 });
 
+test("删除进行中暂停详情读取，不因列表变短重读剩余会话", async () => {
+  const env = harness();
+  const calls = [];
+  let sessions = Array.from({ length: 21 }, (_, i) => ({ id: String(i), updatedAt: 1 }));
+  let paused = false;
+  const call = input => new Promise(resolve => calls.push({ input, resolve }));
+  const render = () => env.render(() => env.tools.useSessionDetails(sessions, call, undefined, paused));
+  try {
+    render();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].input.sessionIds.length, 20);
+    paused = true;
+    sessions = sessions.slice(1);
+    render();
+    calls[0].resolve({ items: [] });
+    await tick();
+    assert.equal(calls.length, 1, "暂停后不能继续下一批，也不能因为列表变化重读");
+    paused = false;
+    render();
+    assert.equal(calls.length, 2, "恢复后只补读一次当前列表");
+    assert.deepEqual(calls[1].input.sessionIds, sessions.map(session => session.id).slice(0, 20));
+  } finally { env.dispose(); }
+});
+
 test("详情分批读取取消后不发布旧结果，单批失败可重试", async () => {
   const env = harness(); const calls = [];
   let sessions = Array.from({ length: 21 }, (_, i) => ({ id: String(i), updatedAt: 1 }));

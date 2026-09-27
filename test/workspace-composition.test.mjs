@@ -623,3 +623,88 @@ test("归档发现入口提供组合日期筛选及只读预览", async () => {
   assert.ok(nodes(tree).some(n => n.props.id === 'dsham-search-scope'), '未归档同样提供标题与正文范围');
   assert.ok(nodes(tree).find(n => n.props.id === 'dsham-sort-filter').props.options.some(option => option.value === 'created'), '未归档同样支持创建时间排序');
 });
+
+test("批量删除进行中不再重读剩余会话的详情和创建时间", async () => {
+  const slots = [];
+  let cursor = 0;
+  let effects = [];
+  const hooks = {
+    ...statics.react,
+    useSyncExternalStore: (_subscribe, get) => get(),
+    useState: initial => { const i = cursor++; if (!(i in slots)) slots[i] = { value: typeof initial === "function" ? initial() : initial }; return [slots[i].value, next => { slots[i].value = typeof next === "function" ? next(slots[i].value) : next; }]; },
+    useRef: initial => { const i = cursor++; return slots[i] ??= { current: initial }; },
+    useMemo: fn => fn(),
+    useEffect(fn, deps) {
+      const i = cursor++;
+      const previous = slots[i];
+      const changed = !previous || deps == null || previous.deps == null || deps.length !== previous.deps.length || deps.some((value, index) => !Object.is(value, previous.deps[index]));
+      if (changed) effects.push(() => { previous?.cleanup?.(); const cleanup = fn(); slots[i] = { deps, cleanup: typeof cleanup === "function" ? cleanup : undefined }; });
+    }
+  };
+  const client = factories.get("@michengai/dsh-archive-manager")(name => name === "react" ? hooks : statics[name]);
+  const ids = ["a", "b", "c"];
+  const state = { items: [], archivedSessionIds: [...ids] };
+  const sessionState = { byId: Object.fromEntries(ids.map(id => [id, { id, title: id, updatedAt: 1 }])) };
+  let metadataCalls = 0;
+  let detailCalls = 0;
+  let deleting = false;
+  let metadataDuring = 0;
+  let detailDuring = 0;
+  let detailInputs = [];
+  const props = {
+    sessionStore: source(sessionState),
+    workspaceStore: source(state),
+    archivedSessionMetadata: async () => { metadataCalls += 1; if (deleting) metadataDuring += 1; return { items: [] }; },
+    sessionDetails: async input => { detailCalls += 1; detailInputs.push(input.sessionIds); if (deleting) detailDuring += 1; return { items: [] }; },
+    organizeBatch: async (_kind, batchIds, options) => {
+      const succeeded = [];
+      for (const id of batchIds) {
+        state.archivedSessionIds = state.archivedSessionIds.filter(value => value !== id);
+        delete sessionState.byId[id];
+        succeeded.push(id);
+        options.onProgress?.({ total: batchIds.length, done: succeeded.length, succeeded: succeeded.length, skipped: 0, failed: 0 });
+        render();
+      }
+      return { succeeded, skipped: [], failures: [], remaining: [] };
+    },
+    t: key => key
+  };
+  const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : node?.props ? [node, ...nodes(node.props.children)] : [];
+  let tree;
+  const render = () => {
+    cursor = 0;
+    tree = client.__test.ArchivedSessionsSection(props);
+    const pending = effects;
+    effects = [];
+    pending.forEach(run => run());
+  };
+  const previousWindow = globalThis.window;
+  const listeners = new EventTarget();
+  globalThis.window = { addEventListener: listeners.addEventListener.bind(listeners), removeEventListener: listeners.removeEventListener.bind(listeners) };
+  try {
+    render();
+    assert.equal(metadataCalls, 1);
+    assert.equal(detailCalls, 1);
+    const boxes = () => nodes(tree).filter(node => node.props.label === "archives.selectSession");
+    boxes()[0].props.onChange({ target: { checked: true } });
+    render();
+    boxes()[1].props.onChange({ target: { checked: true } });
+    render();
+    const toolbar = () => nodes(tree).find(node => typeof node.props.onToggle === "function" && typeof node.props.onDelete === "function");
+    toolbar().props.onDelete();
+    render();
+    const dialog = nodes(tree).find(node => node.props.open === true && node.props.title === "archives.deleteSelectedTitle");
+    assert.ok(dialog, "确认删除后才开始清理");
+    deleting = true;
+    await nodes(dialog.props.footer).find(node => node.props.children === "archives.deleteSelectedConfirm").props.onClick();
+    assert.equal(metadataDuring, 0, "删除过程中不能按剩余归档名单重读创建时间");
+    assert.equal(detailDuring, 0, "删除过程中不能按变短的列表重读会话原文");
+    deleting = false;
+    render();
+    assert.equal(metadataCalls, 2, "删除结束后只补读一次创建时间");
+    assert.equal(detailCalls, 2, "删除结束后只补读一次详情");
+    assert.deepEqual(detailInputs.at(-1), ["c"]);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});

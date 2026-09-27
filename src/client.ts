@@ -445,6 +445,10 @@ export function startArchiveClient(require: HostRequire) {
 			};
 			(0, react.useEffect)(() => { if (viewState) Object.assign(viewState, { query, project, sortBy }); }, [query, project, sortBy, viewState]);
 			const eligibleIds = (0, react.useMemo)(() => isArchived ? workspaceState.archivedSessionIds : unarchivedSessionIds(sessions.byId, workspaceState.archivedSessionIds), [isArchived, sessions.byId, workspaceState.archivedSessionIds]);
+			const liveDetailSessions = sessionDetailCandidates(eligibleIds, sessions.byId);
+			// 删除会逐条缩短列表。忙碌时沿用删除前的目标，避免每删一条就重读剩余原文。
+			const heldDetailSessions = (0, react.useRef)(liveDetailSessions);
+			if (!busy) heldDetailSessions.current = liveDetailSessions;
 			const groups = (0, react.useMemo)(() => deriveArchivedGroups(sessions.byId, workspaceState.items, eligibleIds, t("group.ungrouped")), [sessions.byId, workspaceState, eligibleIds, t]);
 			const switchTab = (tab: string) => {
 				if (busy || unarchivingSessionIdsRef.current.size > 0) return;
@@ -491,7 +495,7 @@ export function startArchiveClient(require: HostRequire) {
 				}
 				finally { archiveBusy.current = false; setBusy(false); }
 			};
-			const details = useSessionDetails(sessionDetailCandidates(eligibleIds, sessions.byId), sessionDetails, t);
+			const details = useSessionDetails(heldDetailSessions.current, sessionDetails, t, busy);
             const copyDetail = async (session: ClientSession, kind: string) => {
                 setError(null); setNotice(null);
                 try {
@@ -508,6 +512,8 @@ export function startArchiveClient(require: HostRequire) {
             };
             const sortedGroups = (0, react.useMemo)(() => sortArchivedGroups(groups, sortBy, createdAtById, t, details.byId), [groups, sortBy, createdAtById, t, details.byId]);
 			(0, react.useEffect)(() => {
+				// 归档名单在批量删除中会逐条变化。忙碌时不重读，结束后再补一次。
+				if (busy) return;
 				let cancelled = false;
 				archivedSessionMetadata().then((result) => {
 					if (!cancelled) setCreatedAtById(Object.fromEntries(result.items.map((item) => [item.sessionId, item.createdAt])));
@@ -517,7 +523,7 @@ export function startArchiveClient(require: HostRequire) {
 				return () => {
 					cancelled = true;
 				};
-			}, [archivedSessionMetadata, workspaceState.archivedSessionIds]);
+			}, [archivedSessionMetadata, workspaceState.archivedSessionIds, busy]);
 			(0, react.useEffect)(() => {
 				if (project !== "all" && !groups.some((group) => group.key === project)) setProject("all");
 			}, [groups, project]);

@@ -37,12 +37,13 @@ export function createDiscoveryTools(React: typeof import("react")) {
     const active = enabled && query.trim() && call;
     return { ...(active ? state.key === key ? state : { key, status: "loading", items: [], failures: [], done: 0, total: ids.length } : { status: "idle", items: [], failures: [] }), retry: () => setRevision(value => value + 1) };
   }
-  function useSessionDetails(sessions: readonly SessionSummary[], call?: (input: { sessionIds: string[] }) => Promise<unknown>, t?: Translate) {
+  function useSessionDetails(sessions: readonly SessionSummary[], call?: (input: { sessionIds: string[] }) => Promise<unknown>, t?: Translate, paused = false) {
     const key = JSON.stringify(sessions.map(session => [session.id, session.updatedAt]));
     const [revision, setRevision] = React.useState(0);
     const [state, setState] = React.useState<{ key: string; items: SessionDetail[]; pending: boolean }>({ key: "", items: [], pending: false });
     React.useEffect(() => {
-      if (!call) return;
+      // 批量删除会逐条缩短列表。暂停时停掉后续分批，也不要为变短的列表重读原文。
+      if (!call || paused) return;
       let active = true;
       const ids = [...new Set((JSON.parse(key) as [string, unknown][]).map(row => row[0]))];
       setState({ key, items: [], pending: ids.length > 0 });
@@ -62,7 +63,7 @@ export function createDiscoveryTools(React: typeof import("react")) {
       };
       load();
       return () => { active = false; };
-    }, [key, call, revision]);
+    }, [key, call, revision, paused]);
     const current = call && state.key === key ? state : { items: [], pending: Boolean(call && sessions.length) };
     // 只缓存读取结果和本地错误键；语言切换在渲染时生效，不触发重复读取。
     const items = current.items.map(row => row.errorKey ? { ...row, error: t ? t(row.errorKey) : row.errorKey } : row);
