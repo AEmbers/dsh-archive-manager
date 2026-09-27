@@ -32,7 +32,7 @@ export function decodeRepairLog(bytes: Buffer, compressed: boolean) {
   return text.trimEnd().split('\n').map(line => record(JSON.parse(line)));
 }
 /** 仅访问宿主定义的消息槽位，不递归改写正文或工具参数中的同名字段。 */
-export function normalizeAutomationSources(input: readonly Record<string, unknown>[]) {
+export function normalizeAutomationSources(input: readonly Record<string, unknown>[], currentVersion = 3) {
   const rows = structuredClone(input); let count = 0;
   const fix = (value: unknown) => {
     if (!value || typeof value !== 'object') return;
@@ -45,7 +45,10 @@ export function normalizeAutomationSources(input: readonly Record<string, unknow
         !['automationId','runId','scheduledFor'].every(key => typeof source[key] === 'string' && source[key].length > 0 && source[key].length < 512) || !Number.isFinite(Date.parse(String(source.scheduledFor)))) {
       throw new Error('自动化归属信息不完整或存在未知字段，需人工检查');
     }
-    message.source = { kind: 'plugin', plugin: 'dsh-automation', form: 'notice', summary: JSON.stringify(source) }; count++;
+    message.source = currentVersion >= 4
+      ? { kind: 'plugin:dsh-automation', form: 'notice', summary: JSON.stringify(source) }
+      : { kind: 'plugin', plugin: 'dsh-automation', form: 'notice', summary: JSON.stringify(source) };
+    count++;
   };
   for (const row of rows.slice(1)) {
     const data = row.data && typeof row.data === 'object' ? record(row.data) : {};
@@ -92,7 +95,7 @@ export async function prepareAutomationRepair({ directory, target, sessionId, fo
   const bytes = await readFile(source);
   const rows = decodeRepairLog(bytes, source.endsWith('.zstd'));
   if (rows[0]?.type !== 'session' || rows[0]?.version !== 0 || rows[0]?.id !== sessionId) throw new Error('日志身份或版本不匹配，不能自动修复');
-  const normalized = normalizeAutomationSources(rows);
+  const normalized = normalizeAutomationSources(rows, format.currentVersion);
   if (!normalized.count) throw new Error('未找到符合修复规则的自动化来源');
   const restore = format.createRestore(normalized.rows[0]);
   normalized.rows.slice(1).forEach(row => restore.decodeRow(row));
