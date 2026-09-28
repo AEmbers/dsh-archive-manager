@@ -4,6 +4,11 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.7 - 2026-09-28
+
+- Works with DSH 0.2.0-rc.1. Versions that already worked still work.
+- Supported DSH versions are 0.1.0-rc.8, 0.1.1-rc.2, 0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.7-rc.1, 0.1.7-rc.2, and 0.2.0-rc.1.
+
 ## 1.0.6 - 2026-09-27
 
 - Batch delete no longer rereads the remaining archived sessions, so cleanup is faster.
