@@ -1,7 +1,7 @@
 // 同代 RC 的依赖范围允许后续版本；隔离验收固定传递依赖，避免宿主混版。
-// 此清单覆盖 0.1.5 两个 RC 的依赖闭包，不套用到旧版独立发布的包。
+// 此清单覆盖 0.1.5 起的 RC 依赖闭包，不套用到 0.1.2 及更早独立发布的包。
 export function hostTestOverrides(version) {
-	if (!["0.1.5-rc.1", "0.1.5-rc.2", "0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1"].includes(version)) return {};
+	if (!["0.1.5-rc.1", "0.1.5-rc.2", "0.1.5-rc.3", "0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1"].includes(version)) return {};
 	const names = [
 		"agent", "api-gateway", "brand", "client-connection", "client-locale", "client-store",
 		"client-ui-conversation", "client-ui-primitives", "client-ui-sidebar", "client-ui-slots", "client-ui-workspace",
@@ -13,7 +13,7 @@ export function hostTestOverrides(version) {
 		"spill", "spill-local", "storage", "storage-domain", "system-prompt", "timeout", "tool-todo", "tools",
 		"typert-protocol", "typert-registry", "user-approval", "util-crypto", "util-values", "workspace",
 		// 0.1.7-rc.1 才纳入这两个包；0.1.5 两版把它们钉到同版本会取不到包。
-		...(["0.1.5-rc.1", "0.1.5-rc.2"].includes(version) ? [] : ["compaction-image-offload", "ptc-runtime"]),
+		...(["0.1.5-rc.1", "0.1.5-rc.2", "0.1.5-rc.3"].includes(version) ? [] : ["compaction-image-offload", "ptc-runtime"]),
 		...(version === "0.2.0-rc.1" ? ["client-shortcuts", "client-product-analytics"] : [])
 	];
 	return Object.fromEntries(names.map((name) => [`@deepseek-ai/dsh-${name}`, version]));
