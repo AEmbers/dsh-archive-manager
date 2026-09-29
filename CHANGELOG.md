@@ -4,6 +4,12 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.8 - 2026-09-30
+
+- Works with DSH 0.2.0-rc.2. Supported versions from 0.1.2-rc.1 onward still work, and 0.1.5-rc.3 is now included.
+- 0.1.0-rc.8 and 0.1.1-rc.2 are no longer supported.
+- Supported DSH versions are 0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.5-rc.3, 0.1.7-rc.1, 0.1.7-rc.2, 0.2.0-rc.1, and 0.2.0-rc.2.
+
 ## 1.0.7 - 2026-09-28
 
 - Works with DSH 0.2.0-rc.1. Versions that already worked still work.
