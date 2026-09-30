@@ -4,6 +4,10 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.9 - 2026-09-30
+
+- The copied sidebar row styles no longer cover the official workspace-tree indent. Current DSH keeps the official sidebar styles. Older hosts that still replace the sidebar use a private class prefix.
+
 ## 1.0.8 - 2026-09-30
 
 - Works with DSH 0.2.0-rc.2. Supported versions from 0.1.2-rc.1 onward still work, and 0.1.5-rc.3 is now included.

@@ -341,6 +341,37 @@ test("批量归档失败时保持确认框打开并显示错误", () => {
 	assert.equal(state.error, "archives.archiveFailed: host rejected");
 });
 
+test("forked row stylesheet does not reuse the official workspace class prefix", async () => {
+	const source = await readFile(fileURLToPath(new URL("../src/client.ts", import.meta.url)), "utf8");
+	const built = await readFile(CLIENT_BUNDLE, "utf8");
+	for (const text of [source, built]) {
+		assert.equal(text.includes("YDXeBa_"), false);
+		assert.equal(text.includes(".dshamRow_projectRow,.dshamRow_sessionRow{cursor:pointer"), true);
+		assert.equal(text.includes("padding:0 8px"), true);
+		assert.equal(text.includes("ensureLegacyWorkspaceCss"), true);
+	}
+	const injected = [];
+	const previous = document.createElement;
+	const previousQuery = document.querySelector;
+	const previousAppend = document.head.appendChild;
+	document.querySelector = () => null;
+	document.createElement = (name) => {
+		const tag = { dataset: {}, textContent: "" };
+		return name === "style" ? tag : previous(name);
+	};
+	document.head.appendChild = (tag) => { injected.push(tag.dataset.pluginCss); };
+	try {
+		materialize("@michengai/dsh-archive-manager", { staticModules: { ...statics, "@deepseek-ai/dsh-client-store": { defineStore } } });
+	} finally {
+		document.createElement = previous;
+		document.querySelector = previousQuery;
+		document.head.appendChild = previousAppend;
+	}
+	assert.equal(injected.includes("@michengai/dsh-archive-manager/Rows.module.css"), false);
+	assert.equal(injected.includes("@michengai/dsh-archive-manager/WorkspaceBrowser.module.css"), false);
+	assert.equal(injected.includes("@michengai/dsh-archive-manager/WorkspacePicker.module.css"), false);
+});
+
 test("bundle resolves the current client-store and keeps the legacy fallback", () => {
 	assert.equal(alphaRequests.includes("@deepseek-ai/dsh-client-store"), true);
 	assert.equal(alphaRequests.includes("@deepseek-ai/dsh-client-runtime/client"), false);

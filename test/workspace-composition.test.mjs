@@ -199,11 +199,13 @@ test("官方样式已加载时，归档侧栏仍加载自己的样式", () => {
 		createElement: () => ({ dataset: {}, style: {} }), head: { appendChild: (tag) => tags.push(tag) }
 	};
 	try {
-		factories.get("@michengai/dsh-archive-manager")((id) => {
+		const client = factories.get("@michengai/dsh-archive-manager")((id) => {
 			if (statics[id]) return statics[id];
 			throw new Error(`缺少静态模块 ${id}`);
 		});
-		assert.ok(tags.some((tag) => tag.textContent.includes(".qDHVXG_sectionHeader")), "不能因官方同名 CSS 标签而跳过归档侧栏样式");
+		assert.equal(tags.some((tag) => tag.textContent.includes(".qDHVXG_sectionHeader")), false, "菜单路径启动时不注入复制的侧栏样式");
+		client.__test.ensureLegacyWorkspaceCss();
+		assert.ok(tags.some((tag) => tag.textContent.includes(".qDHVXG_sectionHeader")), "旧侧栏不能因官方同名 CSS 标签而跳过自己的样式");
 		assert.equal(tags.filter((tag) => tag.textContent === "official").length, 3);
 	} finally {
 		globalThis.document = previous;
