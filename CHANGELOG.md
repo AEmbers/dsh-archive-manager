@@ -4,6 +4,10 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.10 - 2026-09-30
+
+- Official desktop can hot-reload this plugin without leaving sessionController unavailable. Web behavior is unchanged.
+
 ## 1.0.9 - 2026-09-30
 
 - The copied sidebar row styles no longer cover the official workspace-tree indent. Current DSH keeps the official sidebar styles. Older hosts that still replace the sidebar use a private class prefix.

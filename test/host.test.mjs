@@ -349,6 +349,53 @@ test("收藏经真实宿主存储域落盘并关闭重开，含特殊字符 ID",
 	} finally { await facility.closeAll(); }
 });
 
+test("热重载时过期的文件上传解析器可以被替换，旧解除函数不清掉新的", async () => {
+	const env = buildRoot();
+	const uploads = {
+		agentResolver: undefined,
+		registerAgentResolver(resolve) {
+			if (this.agentResolver !== undefined) throw new Error("file-upload: Agent resolver is already registered");
+			this.agentResolver = resolve;
+			return () => {
+				if (this.agentResolver === resolve) this.agentResolver = undefined;
+			};
+		},
+	};
+	env.ctx.provide("fileUploads", uploads);
+	await mountWorkspaceRegistry(env);
+	const previous = () => "old";
+	const disposePrevious = uploads.registerAgentResolver(previous);
+	const next = () => "new";
+	const disposeNext = uploads.registerAgentResolver(next);
+	assert.equal(uploads.agentResolver, next);
+	disposePrevious();
+	assert.equal(uploads.agentResolver, next);
+	disposeNext();
+	assert.equal(uploads.agentResolver, undefined);
+});
+
+test("文件上传解析器的其他错误和无法清理的形状仍然抛出", async () => {
+	const env = buildRoot();
+	const other = {
+		registerAgentResolver() {
+			throw new Error("file-upload: something else");
+		},
+	};
+	env.ctx.provide("fileUploads", other);
+	await mountWorkspaceRegistry(env);
+	assert.throws(() => other.registerAgentResolver(() => "x"), /something else/);
+
+	const stuckEnv = buildRoot();
+	const stuck = {
+		registerAgentResolver() {
+			throw new Error("file-upload: Agent resolver is already registered");
+		},
+	};
+	stuckEnv.ctx.provide("fileUploads", stuck);
+	await mountWorkspaceRegistry(stuckEnv);
+	assert.throws(() => stuck.registerAgentResolver(() => "x"), /already registered/);
+});
+
 test("workspace registry init with the fakes", async () => {
 	const env = buildRoot({
 		headers: [header(s1, cwdA), header(s2, cwdA), header(s3, cwdB)],

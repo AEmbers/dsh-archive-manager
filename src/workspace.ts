@@ -387,6 +387,33 @@ function hostEvent(ctx: HostContext, name: "waterfall" | "parallel") {
 	const caller = (ctx as HostContext & { waterfall?: unknown; parallel?: unknown })[name];
 	return typeof caller === "function" ? caller as (this: HostContext, ...args: unknown[]) => Promise<unknown> : undefined;
 }
+const fileUploadResolverRestart = Symbol.for("dsh-archive-manager.file-upload-resolver-restart");
+const staleFileUploadResolver = "file-upload: Agent resolver is already registered";
+/**
+ * 官方桌面用插件管理器热重载。替换 workspace 会让 sessionController 重启，
+ * 新实例注册文件上传解析器时旧的解除函数还没跑，宿主因此抛错并停住。
+ * 只在这句已知错误上清掉过期注册再试一次；冷启动和其他错误保持原样。
+ * Web 与桌面走同一条替换，所以两边都装这个兼容。
+ */
+function tolerateStaleFileUploadResolver(ctx: Context) {
+	const uploads = ctx.get?.("fileUploads") as {
+		agentResolver?: unknown;
+		registerAgentResolver?: ((this: { agentResolver?: unknown }, resolve: unknown) => () => void) & { [fileUploadResolverRestart]?: boolean };
+	} | undefined;
+	const original = uploads?.registerAgentResolver;
+	if (uploads === undefined || typeof original !== "function" || original[fileUploadResolverRestart] === true) return;
+	const registerAgentResolver = function (this: { agentResolver?: unknown }, resolve: unknown) {
+		try {
+			return original.call(this, resolve);
+		} catch (error) {
+			if (!(error instanceof Error) || error.message !== staleFileUploadResolver || !Object.hasOwn(this, "agentResolver")) throw error;
+			this.agentResolver = undefined;
+			return original.call(this, resolve);
+		}
+	};
+	registerAgentResolver[fileUploadResolverRestart] = true;
+	uploads.registerAgentResolver = registerAgentResolver;
+}
 var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as WorkspaceConstructor) {
 	static inject = [
 		"storageDomain",
@@ -408,6 +435,7 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 	declare favoriteDomainPromise: Promise<Domain<typeof favoriteDomainSpec>> | undefined;
 	constructor(ctx: Context) {
 		super(ctx);
+		tolerateStaleFileUploadResolver(ctx);
 		const indexedPath = this.host.sessionPath;
 		this.host.sessionPath = (id) => {
 			const path = indexedPath(id);
