@@ -653,21 +653,30 @@ test("批量删除进行中不再重读剩余会话的详情和创建时间", as
   let metadataDuring = 0;
   let detailDuring = 0;
   let detailInputs = [];
+  let deleteCalls = 0;
   const props = {
     sessionStore: source(sessionState),
     workspaceStore: source(state),
     archivedSessionMetadata: async () => { metadataCalls += 1; if (deleting) metadataDuring += 1; return { items: [] }; },
     sessionDetails: async input => { detailCalls += 1; detailInputs.push(input.sessionIds); if (deleting) detailDuring += 1; return { items: [] }; },
-    organizeBatch: async (_kind, batchIds, options) => {
-      const succeeded = [];
-      for (const id of batchIds) {
+    organizeBatch: async kind => {
+      throw new Error(`批量删除必须走宿主作用域接口，不得再经过 organizeBatch：${kind}`);
+    },
+    deleteArchivedSessions: async target => {
+      deleteCalls += 1;
+      const deletedSessionIds = [];
+      for (const id of target.sessionIds) {
         state.archivedSessionIds = state.archivedSessionIds.filter(value => value !== id);
         delete sessionState.byId[id];
-        succeeded.push(id);
-        options.onProgress?.({ total: batchIds.length, done: succeeded.length, succeeded: succeeded.length, skipped: 0, failed: 0 });
+        deletedSessionIds.push(id);
         render();
       }
-      return { succeeded, skipped: [], failures: [], remaining: [] };
+      return {
+        requestedSessionIds: [...target.sessionIds],
+        deletedSessionIds,
+        skippedSessionIds: [],
+        failures: [],
+      };
     },
     t: key => key
   };
@@ -699,6 +708,7 @@ test("批量删除进行中不再重读剩余会话的详情和创建时间", as
     assert.ok(dialog, "确认删除后才开始清理");
     deleting = true;
     await nodes(dialog.props.footer).find(node => node.props.children === "archives.deleteSelectedConfirm").props.onClick();
+    assert.equal(deleteCalls, 1, "两个会话的批量删除只允许一次宿主调用");
     assert.equal(metadataDuring, 0, "删除过程中不能按剩余归档名单重读创建时间");
     assert.equal(detailDuring, 0, "删除过程中不能按变短的列表重读会话原文");
     deleting = false;

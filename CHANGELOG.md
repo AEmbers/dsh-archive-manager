@@ -4,6 +4,10 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.11 - 2026-10-01
+
+- Batch delete of archived sessions now uses one storage listing and one host call. Deleted sessions are not put back into the in-memory index.
+
 ## 1.0.10 - 2026-09-30
 
 - Official desktop can hot-reload this plugin without leaving sessionController unavailable. Web behavior is unchanged.

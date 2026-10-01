@@ -1301,6 +1301,69 @@ test("deleteArchivedSessions snapshots a workspace scope, continues after failur
 	);
 });
 
+test("批量删除只为级联预取一次存储列举，墓碑淘汰后也不重建已删索引", async () => {
+	const env = buildRoot({
+		headers: [
+			header(s1, cwdA),
+			header(s2, cwdA),
+			header(s3, cwdB),
+			header(s4, cwdB, { parentSession: s1, origin: "subagent" }),
+		],
+		workspaces: {
+			[A]: workspace("D:\\proj-a", [s1, s2]),
+			[B]: workspace("D:\\proj-b", [s3]),
+		},
+		archived: [s1, s2, s3],
+	});
+	const registry = await mountWorkspaceRegistry(env);
+	registry.deletedSessionTombstoneLimit = 1;
+	let lists = 0;
+	const indexedDuring = [];
+	env.persistence.list = async () => {
+		lists += 1;
+		return env.persistence.headers.filter((item) => existsSync(env.located.get(item.id)));
+	};
+	const originalIndex = registry.indexHeader.bind(registry);
+	registry.indexHeader = async (header) => {
+		indexedDuring.push(header.id);
+		return originalIndex(header);
+	};
+
+	const result = await registry.deleteArchivedSessions({ scope: "all" });
+	assert.deepEqual(result.deletedSessionIds, [s1, s2, s3]);
+	assert.deepEqual(result.failures, []);
+	assert.equal(lists, 1, "整批只允许一次级联预取；索引重建不得再读这份列表");
+	assert.deepEqual(indexedDuring, [], "批次期间不得把存储列表送进 indexHeader");
+	assert.equal(registry.headers.has(s1), false);
+	assert.equal(registry.headers.has(s4), false, "子会话仍要级联删除");
+	assert.equal(existsSync(env.located.get(s4)), false);
+	assert.equal(registry.archivedBatchHeaders, undefined);
+
+	const before = lists;
+	await registry.listStoredHeaders();
+	assert.equal(lists, before + 1, "批后列举必须重新读存储，不能留下批次快照");
+});
+
+test("批量级联预取失败后按会话重试列举，不缓存失败结果", async () => {
+	const env = buildRoot({
+		headers: [header(s1, cwdA), header(s2, cwdA)],
+		workspaces: { [A]: workspace("D:\\proj-a", [s1, s2]) },
+		archived: [s1, s2],
+	});
+	const registry = await mountWorkspaceRegistry(env);
+	let lists = 0;
+	env.persistence.list = async () => {
+		lists += 1;
+		if (lists === 1) throw new Error("list failed");
+		return env.persistence.headers.filter((item) => existsSync(env.located.get(item.id)));
+	};
+
+	const result = await registry.deleteArchivedSessions({ scope: "all" });
+	assert.deepEqual(result.deletedSessionIds, [s1, s2]);
+	assert.deepEqual(result.failures, []);
+	assert.equal(lists, 3, "预取失败一次后，每个会话的级联枚举必须各自重试");
+});
+
 test("deleteArchivedSessions clears every remaining trace for unknown sessions", async () => {
 	const env = buildRoot({
 		workspaces: { [A]: workspace("D:\\proj-a", [sUnknown]) },

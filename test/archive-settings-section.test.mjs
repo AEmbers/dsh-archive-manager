@@ -124,7 +124,9 @@ test("单条删除与批量删除分别调用宿主单会话和作用域接口",
   const client = await readFile(clientPath, "utf8");
 
   assert.match(client, /await deleteSession\(deleteTarget\.session\.id\)/);
-  assert.match(client, /await deleteArchivedSessions\(deleteTarget\.target\)/);
+  assert.match(client, /await deleteArchivedSessions\(target\)/);
+  // 批量删除必须恒定走宿主作用域接口。organizeBatch 恒为真时，旧守卫会让这条路径失效。
+  assert.doesNotMatch(client, /executeBatch\("delete"/);
   // 客户端级联收集（collect*）已按 clean cutover 移除，不得回归。
   assert.doesNotMatch(client, /collectSessionAndDescendantIds|collectArchivedDeleteAllIds/);
 });

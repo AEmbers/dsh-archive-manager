@@ -381,7 +381,7 @@ export function startArchiveClient(require: HostRequire) {
 			const uiFacts = useSessionUiFacts(useSessionPendingInteraction ?? useEmptySessionPendingInteraction, useSessionStatus ?? useEmptySessionStatus, typeof useSessionStatus === "function");
 			const pendingRef = (0, react.useRef)(uiFacts.pending);
 			pendingRef.current = uiFacts.pending;
-			const favoriteSet = new Set(favoriteIds);
+			const favoriteSet = (0, react.useMemo)(() => new Set(favoriteIds), [favoriteIds]);
 			const loadFavorites = async () => {
 				if (!favoriteSessions) return;
 				try { const result = await favoriteSessions(); setFavoriteIds(result.favoriteSessionIds); setFavoritesReady(true); }
@@ -528,7 +528,7 @@ export function startArchiveClient(require: HostRequire) {
 				if (project !== "all" && !groups.some((group) => group.key === project)) setProject("all");
 			}, [groups, project]);
 			const invalidDate = !validUpdatedRange(dateFrom, dateTo);
-            const candidateGroups = sortedGroups.filter(group => project === "all" || project === group.key).map(group => ({ ...group, sessions: group.sessions.filter(session => (!favoritesOnly || favoriteIds.includes(session.id)) && matchesUpdatedRange(session.updatedAt, dateFrom, dateTo)) })).filter(group => group.sessions.length);
+            const candidateGroups = sortedGroups.filter(group => project === "all" || project === group.key).map(group => ({ ...group, sessions: group.sessions.filter(session => (!favoritesOnly || favoriteSet.has(session.id)) && matchesUpdatedRange(session.updatedAt, dateFrom, dateTo)) })).filter(group => group.sessions.length);
             const contentEnabled = searchScope === "content" && !invalidDate;
             const contentSearch = useArchiveSearch(candidateGroups.flatMap(group => group.sessions.map(session => session.id)), query, contentEnabled, searchSessionContent ?? searchArchivedContent);
             const contentMatches = new Map(contentSearch.items.map(item => [item.sessionId, item]));
@@ -538,6 +538,10 @@ export function startArchiveClient(require: HostRequire) {
             const idleCandidates = favoritesReady ? filteredGroups.flatMap((group) => group.sessions).filter((session) => idleArchiveCandidate(session, { days: Number(idleDays), favorites: favoriteSet, currentId: currentSessionId(sessions), pending: uiFacts.pending })).map((session) => session.id) : [];
 			const visibleSessionIds = (0, react.useMemo)(() => archivedSessionIdsInGroups(filteredGroups), [filteredGroups]);
 			const selectedSessionIdSet = (0, react.useMemo)(() => new Set(selectedSessionIds), [selectedSessionIds]);
+			const undoableArchiveCount = (0, react.useMemo)(() => {
+				const archived = new Set(workspaceState.archivedSessionIds);
+				return lastArchive.reduce((count, id) => count + (archived.has(id) ? 1 : 0), 0);
+			}, [lastArchive, workspaceState.archivedSessionIds]);
 			const selectedVisibleCount = visibleSessionIds.filter((sessionId) => selectedSessionIdSet.has(sessionId)).length;
 			const allVisibleSelected = visibleSessionIds.length > 0 && selectedVisibleCount === visibleSessionIds.length;
 			(0, react.useEffect)(() => {
@@ -607,32 +611,60 @@ export function startArchiveClient(require: HostRequire) {
 			}, [deleteTarget, busy]);
 			const confirmDelete = async () => {
 				if (busy || deleteTarget === null) return;
-				if (organizeBatch && deleteTarget.kind === "batch") {
-					const ids = deriveArchivedBatchIds(workspaceState.archivedSessionIds, workspaceState.items, deleteTarget.target);
-					const result = await executeBatch("delete", ids);
-					if (result) setDeleteTarget(null);
+				// 批量删除恒定走宿主的一次作用域调用。organizeBatch 恒为真，旧守卫因此永远走逐条 deleteSession。
+				if (deleteTarget.kind !== "batch") {
+					setBusy(true);
+					setError(null);
+					setNotice(null);
+					try {
+						await deleteSession(deleteTarget.session.id);
+						setDeleteTarget(null);
+					} catch (reason) {
+						setError(formatDeleteError(reason, t));
+					} finally {
+						setBusy(false);
+					}
 					return;
 				}
+				if (batchLock.current || favoriteLock.current || unarchivingSessionIdsRef.current.size > 0) return;
+				const { target } = deleteTarget;
+				if (target.scope === "sessions" && deriveArchivedBatchIds(workspaceState.archivedSessionIds, workspaceState.items, target).length === 0) {
+					setDeleteTarget(null);
+					return;
+				}
+				batchLock.current = true;
 				setBusy(true);
 				setError(null);
 				setNotice(null);
+				setBatchResult(null);
+				setBatchProgress(null);
 				try {
-					if (deleteTarget.kind === "batch") {
-						const result = await deleteArchivedSessions(deleteTarget.target);
-						const feedback = archivedDeleteFeedback(result, t);
-						if (feedback.kind === "error") setError(feedback.message);
-						else setNotice(feedback.message);
-						if (deleteTarget.target.scope === "sessions") {
-							const completed = new Set([...result.deletedSessionIds, ...result.skippedSessionIds]);
-							setSelectedSessionIds((current) => current.filter((sessionId) => !completed.has(sessionId)));
-						}
-					} else {
-						await deleteSession(deleteTarget.session.id);
-					}
+					const result = await deleteArchivedSessions(target);
+					const feedback = archivedDeleteFeedback(result, t);
+					if (feedback.kind === "error") setError(feedback.message);
+					else setNotice(feedback.message);
+					const completed = new Set([...result.deletedSessionIds, ...result.skippedSessionIds]);
+					setLastArchive((previous) => previous.filter((id) => !completed.has(id)));
+					setSelectedSessionIds((current) => current.filter((sessionId) => !completed.has(sessionId)));
+					setFavoriteIds((previous) => previous.filter((id) => !completed.has(id)));
+					const remaining = result.failures.map((failure) => failure.sessionId);
+					retryBatch.current = remaining.length > 0 ? { kind: "delete", ids: remaining, idle: false } : null;
+					setBatchResult({
+						requested: result.requestedSessionIds,
+						succeeded: result.deletedSessionIds,
+						skipped: result.skippedSessionIds,
+						failures: result.failures,
+						unprocessed: [],
+						remaining,
+						refreshError: "refreshError" in result && typeof result.refreshError === "string" ? result.refreshError : null,
+						kind: "delete",
+						tab: archiveTab,
+					});
 					setDeleteTarget(null);
 				} catch (reason) {
 					setError(formatDeleteError(reason, t));
 				} finally {
+					batchLock.current = false;
 					setBusy(false);
 				}
 			};
@@ -666,7 +698,7 @@ export function startArchiveClient(require: HostRequire) {
 					onPreview: () => { requestArchive(idleCandidates); setIdleRequest(true); },
 					progress: batchProgress, result: batchResult?.tab === archiveTab ? batchResult : null,
 					onRetry: () => { const retry = retryBatch.current; if (retry) { if (retry.kind === "delete") setDeleteTarget({ kind: "batch", target: { scope: "sessions", sessionIds: retry.ids }, count: retry.ids.length }); else executeBatch(retry.kind, retry.ids, { idle: retry.idle, retry: true }); } },
-					undoCount: lastArchive.filter((id) => workspaceState.archivedSessionIds.includes(id)).length,
+					undoCount: undoableArchiveCount,
 					onUndo: () => executeBatch("undo", lastArchive, { retry: true }), onReload: loadFavorites
 				}), groups.length > 0 && (0, react_jsx_runtime.jsx)(ArchiveSelectionToolbar, {
 					selectedCount: selectedSessionIds.length,
@@ -4057,11 +4089,13 @@ export function startArchiveClient(require: HostRequire) {
 			});
 			const browserFlowSource = flowSource(DIRECTORY_FLOW_SLOT);
 			const refreshSessionList = async () => {
-				if (typeof ctx.sessions.refresh !== "function") return;
+				if (typeof ctx.sessions.refresh !== "function") return null;
 				try {
 					await ctx.sessions.refresh();
+					return null;
 				} catch (error) {
 					console.warn("archive-manager: restored archived sessions but session list refresh failed:", error);
+					return error instanceof Error ? error.message : String(error);
 				}
 			};
 			const unarchiveOne = createUnarchiveSession(ctx.workspaces, () => ctx.get("remote.workspaceRegistry"));
@@ -4121,8 +4155,8 @@ export function startArchiveClient(require: HostRequire) {
 				if (registry === void 0) throw new Error("archive-manager remote service is unavailable");
 				const result = await registry.deleteArchivedSessions(target);
 				if (!result.ok) throw new Error(result.error.message);
-				await refreshSessionList();
-				return result.value;
+				const refreshError = await refreshSessionList();
+				return { ...result.value, refreshError };
 			};
 			const archivedSessionMetadata = async () => {
 				const registry = ctx.get("remote.workspaceRegistry");

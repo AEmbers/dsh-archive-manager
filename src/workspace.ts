@@ -945,9 +945,19 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 			const deletedSessionIds = [];
 			const skippedSessionIds = [];
 			const failures = [];
+			// 只给本批级联枚举复用。不能挂到 listStoredHeaders：父类 sessionKnown
+			// 和 readSessionHeader 会把这份列表送进 indexHeaders，墓碑淘汰后会把已删会话救回内存索引。
+			let descendantHeaders: Header[] | undefined;
+			try {
+				descendantHeaders = await this.listStoredHeaders();
+			} catch (error) {
+				this.ctx.logger.warn(
+					`archive-manager: batch descendant listing failed; each cascade will retry: ${String(error)}`,
+				);
+			}
 			for (const sessionId of requestedSessionIds) {
 				try {
-					const result = await this.deleteSessionCore(sessionId);
+					const result = await this.deleteSessionCore(sessionId, descendantHeaders);
 					if (result?.skipped) skippedSessionIds.push(sessionId);
 					else deletedSessionIds.push(sessionId);
 				} catch (error) {
@@ -1027,7 +1037,7 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 		});
 	}
 	/** 串行化后的删除主体（级联路径复用：它已持有操作链，绝不能再入队）。 */
-	async deleteSessionCore(sessionId: string) {
+	async deleteSessionCore(sessionId: string, descendantHeaders?: Header[]) {
 		if (!(await this.sessionKnown(sessionId))) {
 			await this.cleanupUnknownArchivedSession(sessionId);
 			return { deleted: true, skipped: true };
@@ -1052,7 +1062,7 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 		// 否则该行会在删除之后被写回（复活）。
 		await projCache?.whenIdle?.();
 		if (projCache !== void 0) await projCache.delete(sessionId);
-		await this.deleteDescendants(sessionId);
+		await this.deleteDescendants(sessionId, descendantHeaders);
 		await this.cleanSpill(sessionId);
 		await this.removeTranscriptDirectory(sessionId);
 		// 只有物理工件删除成功后才能提交记账清理；否则批量目标会因归档标记
@@ -1299,30 +1309,36 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 	/** 尽力而为的级联删除：删除 `sessionId` 的 SUBAGENT 子会话。
 	 * 仅头部标记 `origin: "subagent"` 的会话参与：单凭 `parentSession` 有歧义
 	 *（fork 分支也携带它），而 fork 分支是独立的用户会话，绝不能被级联删除。 */
-	async deleteDescendants(sessionId: string) {
+	async deleteDescendants(sessionId: string, storedHeaders?: Header[]) {
 		try {
 			const descendants = [];
+			const collected = new Set<string>();
 			const sessions = this.ctx.get("sessions");
 			if (sessions !== void 0)
 				for (const session of sessions.list()) {
 					if (
 						session.header.parentSession === sessionId &&
 						session.header.origin === "subagent"
-					)
+					) {
 						descendants.push(session.id);
+						collected.add(session.id);
+					}
 				}
-			for (const header of await this.listStoredHeaders()) {
+			// 批次快照只用于找子会话。缺省时逐次列举，便于单会话删除，也让失败的批次预取能按会话重试。
+			for (const header of storedHeaders ?? await this.listStoredHeaders()) {
 				if (
 					header.parentSession === sessionId &&
 					header.origin === "subagent" &&
-					!descendants.includes(header.id)
-				)
+					!collected.has(header.id)
+				) {
 					descendants.push(header.id);
+					collected.add(header.id);
+				}
 			}
 			for (const childId of descendants) {
 				try {
 					if (!(await this.sessionKnown(childId))) continue;
-					await this.deleteSessionCore(childId);
+					await this.deleteSessionCore(childId, storedHeaders);
 				} catch (error) {
 					this.ctx.logger.warn(
 						`archive-manager: cascade delete of subagent session "${childId}" (child of "${sessionId}") failed: ${String(error)}`,

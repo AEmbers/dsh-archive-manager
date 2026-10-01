@@ -261,7 +261,14 @@ for (const compression of ["none", "zstd"]) {
 		await env.registry.archiveSession("parent");
 		const removed = [];
 		env.ctx.on("api-session/removed", (id) => removed.push(id));
+		let lists = 0;
+		const originalList = env.persistence.list.bind(env.persistence);
+		env.persistence.list = async (...args) => {
+			lists += 1;
+			return originalList(...args);
+		};
 		const result = await env.registry.deleteArchivedSessions({ scope: "all" });
+		assert.equal(lists, 1, "真实 JSONL 批量删除只能预取一次存储列举");
 		assert.deepEqual(result.failures, []);
 		assert.deepEqual(result.deletedSessionIds, ["parent"]);
 		assert.deepEqual(removed, ["child", "parent"]);
