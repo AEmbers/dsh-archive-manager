@@ -381,7 +381,7 @@ export function startArchiveClient(require: HostRequire) {
 			const uiFacts = useSessionUiFacts(useSessionPendingInteraction ?? useEmptySessionPendingInteraction, useSessionStatus ?? useEmptySessionStatus, typeof useSessionStatus === "function");
 			const pendingRef = (0, react.useRef)(uiFacts.pending);
 			pendingRef.current = uiFacts.pending;
-			const favoriteSet = new Set(favoriteIds);
+			const favoriteSet = (0, react.useMemo)(() => new Set(favoriteIds), [favoriteIds]);
 			const loadFavorites = async () => {
 				if (!favoriteSessions) return;
 				try { const result = await favoriteSessions(); setFavoriteIds(result.favoriteSessionIds); setFavoritesReady(true); }
@@ -528,7 +528,7 @@ export function startArchiveClient(require: HostRequire) {
 				if (project !== "all" && !groups.some((group) => group.key === project)) setProject("all");
 			}, [groups, project]);
 			const invalidDate = !validUpdatedRange(dateFrom, dateTo);
-            const candidateGroups = sortedGroups.filter(group => project === "all" || project === group.key).map(group => ({ ...group, sessions: group.sessions.filter(session => (!favoritesOnly || favoriteIds.includes(session.id)) && matchesUpdatedRange(session.updatedAt, dateFrom, dateTo)) })).filter(group => group.sessions.length);
+            const candidateGroups = sortedGroups.filter(group => project === "all" || project === group.key).map(group => ({ ...group, sessions: group.sessions.filter(session => (!favoritesOnly || favoriteSet.has(session.id)) && matchesUpdatedRange(session.updatedAt, dateFrom, dateTo)) })).filter(group => group.sessions.length);
             const contentEnabled = searchScope === "content" && !invalidDate;
             const contentSearch = useArchiveSearch(candidateGroups.flatMap(group => group.sessions.map(session => session.id)), query, contentEnabled, searchSessionContent ?? searchArchivedContent);
             const contentMatches = new Map(contentSearch.items.map(item => [item.sessionId, item]));
@@ -538,6 +538,11 @@ export function startArchiveClient(require: HostRequire) {
             const idleCandidates = favoritesReady ? filteredGroups.flatMap((group) => group.sessions).filter((session) => idleArchiveCandidate(session, { days: Number(idleDays), favorites: favoriteSet, currentId: currentSessionId(sessions), pending: uiFacts.pending })).map((session) => session.id) : [];
 			const visibleSessionIds = (0, react.useMemo)(() => archivedSessionIdsInGroups(filteredGroups), [filteredGroups]);
 			const selectedSessionIdSet = (0, react.useMemo)(() => new Set(selectedSessionIds), [selectedSessionIds]);
+			// 撤回计数只关心仍留在归档集合里的会话；按集合求交，避免每项线性回扫归档名单。
+			const undoableArchiveCount = (0, react.useMemo)(() => {
+				const archived = new Set(workspaceState.archivedSessionIds);
+				return lastArchive.reduce((count, id) => count + (archived.has(id) ? 1 : 0), 0);
+			}, [lastArchive, workspaceState.archivedSessionIds]);
 			const selectedVisibleCount = visibleSessionIds.filter((sessionId) => selectedSessionIdSet.has(sessionId)).length;
 			const allVisibleSelected = visibleSessionIds.length > 0 && selectedVisibleCount === visibleSessionIds.length;
 			(0, react.useEffect)(() => {
@@ -607,32 +612,63 @@ export function startArchiveClient(require: HostRequire) {
 			}, [deleteTarget, busy]);
 			const confirmDelete = async () => {
 				if (busy || deleteTarget === null) return;
-				if (organizeBatch && deleteTarget.kind === "batch") {
-					const ids = deriveArchivedBatchIds(workspaceState.archivedSessionIds, workspaceState.items, deleteTarget.target);
-					const result = await executeBatch("delete", ids);
-					if (result) setDeleteTarget(null);
+				// 批量删除恒定走宿主的一次作用域调用。逐条 deleteSession 曾经是唯一路径：
+				// 它把 N 次 IPC、N 次队列抢锁和 N 次进度驱动的重渲染全部压在一次删除上。
+				if (deleteTarget.kind !== "batch") {
+					setBusy(true);
+					setError(null);
+					setNotice(null);
+					try {
+						await deleteSession(deleteTarget.session.id);
+						setDeleteTarget(null);
+					} catch (reason) {
+						setError(formatDeleteError(reason, t));
+					} finally {
+						setBusy(false);
+					}
 					return;
 				}
+				if (batchLock.current || favoriteLock.current || unarchivingSessionIdsRef.current.size > 0) return;
+				const { target } = deleteTarget;
+				// 作用域 schema 拒绝空 sessionIds；选择项可能已被别的窗口删光。
+				if (target.scope === "sessions" && deriveArchivedBatchIds(workspaceState.archivedSessionIds, workspaceState.items, target).length === 0) {
+					setDeleteTarget(null);
+					return;
+				}
+				batchLock.current = true;
 				setBusy(true);
 				setError(null);
 				setNotice(null);
+				setBatchResult(null);
+				setBatchProgress(null);
 				try {
-					if (deleteTarget.kind === "batch") {
-						const result = await deleteArchivedSessions(deleteTarget.target);
-						const feedback = archivedDeleteFeedback(result, t);
-						if (feedback.kind === "error") setError(feedback.message);
-						else setNotice(feedback.message);
-						if (deleteTarget.target.scope === "sessions") {
-							const completed = new Set([...result.deletedSessionIds, ...result.skippedSessionIds]);
-							setSelectedSessionIds((current) => current.filter((sessionId) => !completed.has(sessionId)));
-						}
-					} else {
-						await deleteSession(deleteTarget.session.id);
-					}
+					const result = await deleteArchivedSessions(target);
+					const feedback = archivedDeleteFeedback(result, t);
+					if (feedback.kind === "error") setError(feedback.message);
+					else setNotice(feedback.message);
+					const completed = new Set([...result.deletedSessionIds, ...result.skippedSessionIds]);
+					setLastArchive((previous) => previous.filter((id) => !completed.has(id)));
+					setSelectedSessionIds((current) => current.filter((sessionId) => !completed.has(sessionId)));
+					setFavoriteIds((previous) => previous.filter((id) => !completed.has(id)));
+					// 宿主批量继续处理并分别回报成功/陈旧/失败，重试集合因此只剩失败项。
+					const remaining = result.failures.map((failure) => failure.sessionId);
+					retryBatch.current = remaining.length > 0 ? { kind: "delete", ids: remaining, idle: false } : null;
+					setBatchResult({
+						requested: result.requestedSessionIds,
+						succeeded: result.deletedSessionIds,
+						skipped: result.skippedSessionIds,
+						failures: result.failures,
+						unprocessed: [],
+						remaining,
+						refreshError: null,
+						kind: "delete",
+						tab: archiveTab,
+					});
 					setDeleteTarget(null);
 				} catch (reason) {
 					setError(formatDeleteError(reason, t));
 				} finally {
+					batchLock.current = false;
 					setBusy(false);
 				}
 			};
@@ -666,7 +702,7 @@ export function startArchiveClient(require: HostRequire) {
 					onPreview: () => { requestArchive(idleCandidates); setIdleRequest(true); },
 					progress: batchProgress, result: batchResult?.tab === archiveTab ? batchResult : null,
 					onRetry: () => { const retry = retryBatch.current; if (retry) { if (retry.kind === "delete") setDeleteTarget({ kind: "batch", target: { scope: "sessions", sessionIds: retry.ids }, count: retry.ids.length }); else executeBatch(retry.kind, retry.ids, { idle: retry.idle, retry: true }); } },
-					undoCount: lastArchive.filter((id) => workspaceState.archivedSessionIds.includes(id)).length,
+					undoCount: undoableArchiveCount,
 					onUndo: () => executeBatch("undo", lastArchive, { retry: true }), onReload: loadFavorites
 				}), groups.length > 0 && (0, react_jsx_runtime.jsx)(ArchiveSelectionToolbar, {
 					selectedCount: selectedSessionIds.length,

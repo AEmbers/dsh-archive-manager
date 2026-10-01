@@ -1301,6 +1301,76 @@ test("deleteArchivedSessions snapshots a workspace scope, continues after failur
 	);
 });
 
+test("批量删除整批复用一次存储列举，单会话删除与批后操作各自重新列举", async () => {
+	const env = buildRoot({
+		headers: [
+			header(s1, cwdA),
+			header(s2, cwdA),
+			header(s3, cwdB),
+			header(s4, cwdB),
+		],
+		workspaces: {
+			[A]: workspace("D:\\proj-a", [s1, s2]),
+			[B]: workspace("D:\\proj-b", [s3, s4]),
+		},
+		archived: [s1, s2, s3],
+	});
+	const registry = await mountWorkspaceRegistry(env);
+	let lists = 0;
+	const originalList = env.persistence.list;
+	env.persistence.list = async () => {
+		lists += 1;
+		return originalList();
+	};
+
+	const result = await registry.deleteArchivedSessions({ scope: "all" });
+	assert.deepEqual(result.deletedSessionIds, [s1, s2, s3]);
+	assert.deepEqual(result.failures, []);
+	assert.equal(
+		lists,
+		1,
+		"整批删除只允许一次全量存储列举，否则退化为每会话一次 O(N·S) 磁盘遍历",
+	);
+	assert.equal(
+		registry.archivedBatchHeaders,
+		undefined,
+		"批次结束后必须清理快照，否则批后会读到已删除的工件",
+	);
+
+	const before = lists;
+	await registry.deleteSession(s4);
+	assert.ok(
+		lists > before,
+		"单会话删除不启用批次快照，必须各自重新列举",
+	);
+});
+
+test("批量删除中途失败也必须清理批次快照", async () => {
+	const env = buildRoot({
+		headers: [header(s1, cwdA), header(s2, cwdA)],
+		workspaces: { [A]: workspace("D:\\proj-a", [s1, s2]) },
+		archived: [s1, s2],
+	});
+	const registry = await mountWorkspaceRegistry(env);
+	env.projCache.delete = async () => {
+		throw new Error("cache write failed");
+	};
+
+	const result = await registry.deleteArchivedSessions({ scope: "all" });
+	assert.deepEqual(result.deletedSessionIds, []);
+	assert.equal(result.failures.length, 2);
+	assert.equal(
+		registry.archivedBatchHeaders,
+		undefined,
+		"失败路径也必须清理快照",
+	);
+	assert.deepEqual(
+		env.global.archivedSessionIds,
+		[s1, s2],
+		"失败会话保留归档标记，可再次重试",
+	);
+});
+
 test("deleteArchivedSessions clears every remaining trace for unknown sessions", async () => {
 	const env = buildRoot({
 		workspaces: { [A]: workspace("D:\\proj-a", [sUnknown]) },

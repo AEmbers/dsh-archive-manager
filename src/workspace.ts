@@ -431,6 +431,8 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 	deletedIdentities = new Map<string, ReturnType<typeof headerIdentity>>();
 	archivedSessionPathIndex = new Map<string, string>();
 	archivedSessionPathIndexKey: string[] | undefined;
+	/** 批量删除期间的存储头部快照（惰性求值一次）；批外为 undefined，逐次列举的原有行为不变。 */
+	archivedBatchHeaders: { promise?: Promise<Header[]> } | undefined;
 	declare typertRemote: TypertGatewayBinding<this>;
 	declare favoriteDomainPromise: Promise<Domain<typeof favoriteDomainSpec>> | undefined;
 	constructor(ctx: Context) {
@@ -945,14 +947,21 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 			const deletedSessionIds = [];
 			const skippedSessionIds = [];
 			const failures = [];
-			for (const sessionId of requestedSessionIds) {
-				try {
-					const result = await this.deleteSessionCore(sessionId);
-					if (result?.skipped) skippedSessionIds.push(sessionId);
-					else deletedSessionIds.push(sessionId);
-				} catch (error) {
-					failures.push({ sessionId, message: String(error) });
+			// 整个批次共用一份存储头部快照。必须在 finally 清理：中途抛错留下的
+			// 快照会让批后的会话识别读到已被删除的工件。
+			this.archivedBatchHeaders = {};
+			try {
+				for (const sessionId of requestedSessionIds) {
+					try {
+						const result = await this.deleteSessionCore(sessionId);
+						if (result?.skipped) skippedSessionIds.push(sessionId);
+						else deletedSessionIds.push(sessionId);
+					} catch (error) {
+						failures.push({ sessionId, message: String(error) });
+					}
 				}
+			} finally {
+				this.archivedBatchHeaders = void 0;
 			}
 			return {
 				requestedSessionIds,
@@ -1160,11 +1169,24 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 		if (this.deletedSessionIds.has(header.id)) return;
 		return super.indexHeader(header);
 	}
-	/** 统一旧版头部数组与 0.1.3 的持久化快照，供父类索引和本插件枚举共用。 */
+	/**
+	 * 统一旧版头部数组与 0.1.3 的持久化快照，供父类索引和本插件枚举共用。
+	 *
+	 * 批量删除期间整个批次共用一份惰性快照：`deleteDescendants` 的子会话枚举、
+	 * `coldReuseKnown` 的冷复用探针，以及父类 `sessionKnown` 未命中时的索引重建，
+	 * 都收敛为一次全量列举。少了它，删 N 个会话会触发 N 次 O(N·S) 的磁盘遍历。
+	 * 批外保持逐次列举，单会话删除的调用次数与调用时机均不变。
+	 */
 	async listStoredHeaders() {
-		return (await this.ctx.sessionPersistence.list()).map(
-			(item) => "header" in item && item.header ? item.header : item as Header,
-		);
+		const batch = this.archivedBatchHeaders;
+		if (batch === void 0) {
+			return (await this.ctx.sessionPersistence.list()).map(
+				(item) => "header" in item && item.header ? item.header : item as Header,
+			);
+		}
+		return (batch.promise ??= this.ctx.sessionPersistence.list().then((items) =>
+			items.map((item) => ("header" in item && item.header ? item.header : item as Header)),
+		));
 	}
 	async indexHeaders(items: (Header | { header: Header })[]) {
 		for (const item of items) await this.indexHeader("header" in item && item.header ? item.header : item as Header);
@@ -1302,22 +1324,28 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 	async deleteDescendants(sessionId: string) {
 		try {
 			const descendants = [];
+			// 实时与存储两侧合流：这里用集合去重，避免第二个来源对每个头部线性回扫。
+			const collected = new Set<string>();
 			const sessions = this.ctx.get("sessions");
 			if (sessions !== void 0)
 				for (const session of sessions.list()) {
 					if (
 						session.header.parentSession === sessionId &&
 						session.header.origin === "subagent"
-					)
+					) {
 						descendants.push(session.id);
+						collected.add(session.id);
+					}
 				}
 			for (const header of await this.listStoredHeaders()) {
 				if (
 					header.parentSession === sessionId &&
 					header.origin === "subagent" &&
-					!descendants.includes(header.id)
-				)
+					!collected.has(header.id)
+				) {
 					descendants.push(header.id);
+					collected.add(header.id);
+				}
 			}
 			for (const childId of descendants) {
 				try {
