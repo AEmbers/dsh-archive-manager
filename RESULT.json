@@ -54,7 +54,9 @@
     "note": "the independent verifier (task D) reviewed archive-manager at 1.0.12 / commit 21e0a98. The final deliverable is 1.0.13 / commit 3522f57. The 1.0.13 delta is the dsh-client-runtime removal described above; it was re-built, re-tested (270/270), re-installed from GitHub source and re-verified in the browser on both cores after the change, but that re-verification was run by fix-gate, not by the verifier.",
     "verifierReviewed": { "version": "1.0.12", "commit": "21e0a98" },
     "finalDeliverable": { "version": "1.0.13", "commit": "3522f57", "docsCommit": "917f589" },
-    "deliveredAsOfThisBlock": "1.0.13 / 3522f57 (docs 917f589)"
+    "headAtHandoff": "24f99c79ead5f0d60ea67b2b00c2a0476fda7086",
+    "headNote": "the fork's HEAD advanced past 3522f57 with two docs-only commits (917f589 and 24f99c7). The shipped CODE is unchanged at 1.0.13; only NOTES.md / RESULT.json / CHANGELOG files moved. A lead-provided manifest quoting 24f99c7 and this file quoting 3522f57 therefore describe the same artifact.",
+    "deliveredAsOfThisBlock": "1.0.13, code commit 3522f57, HEAD 24f99c7"
   },
   "evidence": [
     {
