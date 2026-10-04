@@ -107,9 +107,23 @@
       "kind": "github-source-install-has-artifacts",
       "observed": "installed copies at C:\\Sophia\\_compat021\\home\\profiles\\uiverify\\node_modules\\@michengai\\dsh-archive-manager and C:\\Sophia\\_compat020\\home\\profiles\\fixgate020\\node_modules\\@michengai\\dsh-archive-manager each report version 1.0.13 and contain all 12 built lib/*.js files"
     }
+    {
+      "kind": "write-operation",
+      "core": "dsh 0.2.1-alpha.1",
+      "command": "pwsh -NoProfile -File C:\\Sophia\\_compat021\\work\\_uiverify\\write-op.ps1 -Root C:\\Sophia\\_compat021 -Port 8931 -Profile uiverify -Label 021-write-archive -Action archive   (then -Action unarchive)",
+      "observed": "archive: one session moved, unarchived 12 -> 11, archived 0 -> 1, via the panel's \"归档\" action plus the modal's \"归档\" confirm. unarchive: unarchived 11 -> 12, archived 1 -> 0, via \"恢复\" (no confirm dialog). On disk home\\storages\\workspace.json went 670 B -> 728 B (archivedSessionIds: [] -> [\"session-f0160d13-d185-4786-bcfb-1de8755c8012\"]) and back to 670 B on unarchive - three independent witnesses of the same state change.",
+      "reports": ["C:\\Sophia\\_compat021\\work\\_uiverify\\out\\021-write-archive.json", "C:\\Sophia\\_compat021\\work\\_uiverify\\out\\021-write-unarchive.json"]
+    },
+    {
+      "kind": "write-operation",
+      "core": "dsh 0.2.0-rc.2",
+      "observed": "NOT MEASURED - '无法断言'. The fixgate020 sandbox profile lists zero rows on the 未归档 tab (empty state '暂无未归档会话。'), so there was nothing to archive. probe-session-visibility.mjs confirmed the HOST's own session surface is equally empty in that profile (the string MOCK_TURN_2_OK appears 0 times anywhere in the page body), so this is a data condition of that sandbox profile rather than a defect found in this plugin. The write path was only exercised end-to-end on 0.2.1-alpha.1.",
+      "reports": ["C:\\Sophia\\_compat021\\work\\_uiverify\\out\\probe-sessions-020.json"]
+    }
   ],
   "notVerified": [
-    "write paths (actually archiving or deleting a session) are not end-to-end verified; the UI checks only render and read-only interaction",
+    "write paths other than archive/unarchive (actually deleting a session, content search/export) are not verified",
+    "the rc.2 write side is unmeasured, for the data reason above",
     "scripts/test-version-matrix.mjs:43 still exercises the pre-0.1.2 runtime fixtures"
   ],
   "notes": "NOTES.md",

@@ -257,13 +257,41 @@ report: C:\Sophia\_compat021\reports\clientbundle-20261004-121952.json
 pwsh -NoProfile -File C:\Sophia\_compat021\work\_uiverify\ui-verify.ps1 -All     # exit 0，两侧都跑
 ```
 
+### 4.6 写操作端到端（归档 → 恢复往返，0.2.1-alpha.1）
+
+渲染级验证管不到"按下去写没写进去"，所以另跑了一次**真的状态变更**（只在沙箱 profile 里造/删数据）：
+
+```powershell
+pwsh -NoProfile -File C:\Sophia\_compat021\work\_uiverify\write-op.ps1 -Root C:\Sophia\_compat021 `
+  -Port 8931 -Profile uiverify -Label 021-write-archive   -Action archive
+pwsh -NoProfile -File C:\Sophia\_compat021\work\_uiverify\write-op.ps1 -Root C:\Sophia\_compat021 `
+  -Port 8931 -Profile uiverify -Label 021-write-unarchive -Action unarchive
+```
+
+| | 归档前 | 归档后 | 恢复后 |
+|---|---|---|---|
+| 「未归档」行数 | 12 | **11** | 12 |
+| 「已归档」行数 | 0 | **1** | 0 |
+| `home\storages\workspace.json` | 670 B，`archivedSessionIds: []` | **728 B**，`["session-f0160d13-…"]` | 670 B，回到 `[]` |
+
+```
+[PASS] one session moved (archive):   unarchived 12 -> 11, archived 0 -> 1, via "归档" + confirm "归档"
+[PASS] one session moved (unarchive): unarchived 11 -> 12, archived 1 -> 0, via "恢复"
+```
+
+三个互相独立的见证：面板行数动了 / 磁盘上的 `archivedSessionIds` 真写进去了 / 恢复后原样回来。
+归档要点两下（面板「归档」+ 弹窗「归档」），恢复只有一下（「恢复」无确认弹窗）—— 两条都读出来记在 `clicks` 日志里。
+
+**0.2.0-rc.2 侧是「无法断言」**：`fixgate020` 这个 profile 的未归档页签本来就是 0 行（空状态「暂无未归档会话。」），
+没有东西可归档。另跑 `probe-session-visibility.mjs` 确认**宿主自己的会话界面在该 profile 里同样空**
+（整页正文 `MOCK_TURN_2_OK` 出现 0 次）⇒ 是该沙箱 profile 的**数据条件**，不是本插件的缺陷。写路径只在 0.2.1-alpha.1 上走通。
+
 ## 5. 遗留 / 未做
 
 - 未向上游提 PR（按铁律）。
 - 未发布到 npm；交付物是 fork 的 GitHub 源码（`github:AEmbers/dsh-archive-manager`）。
 - 未改 `C:\Users\Administrator\.dsh\`。
 - `repository` / `homepage` / `bugs` 仍指向上游，便于溯源与反馈；如需改指 fork 请告知。
-- **写路径未端到端验证**：UI 验证只覆盖「渲染 + 只读交互」（打开设置、切页签、看空状态），
-  没有真的去归档/删除一条会话。所以「归档业务数据流在 0.2.1-alpha.1 上端到端正确」这句话
-  **在本记录的证据之外**，不要由本文件替它背书。
+- **写路径**：0.2.1-alpha.1 上「归档 → 恢复」往返已端到端验证（§4.6，含磁盘见证）；但 0.2.0-rc.2 侧没测到
+  （该 profile 无会话可归档，原因见 §4.6），**不算通过**。真正删除会话、正文检索导出这些写路径也没测。
 - `scripts/test-version-matrix.mjs:43` 仍指向 0.1.0-rc.8 / 0.1.1-rc.2 两个已声明不支持的档案（理由见 §3.1）。
