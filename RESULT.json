@@ -54,9 +54,11 @@
     "note": "the independent verifier (task D) reviewed archive-manager at 1.0.12 / commit 21e0a98. The final deliverable is 1.0.13 / commit 3522f57. The 1.0.13 delta is the dsh-client-runtime removal described above; it was re-built, re-tested (270/270), re-installed from GitHub source and re-verified in the browser on both cores after the change, but that re-verification was run by fix-gate, not by the verifier.",
     "verifierReviewed": { "version": "1.0.12", "commit": "21e0a98" },
     "finalDeliverable": { "version": "1.0.13", "commit": "3522f57", "docsCommit": "917f589" },
-    "headAtHandoff": "24f99c79ead5f0d60ea67b2b00c2a0476fda7086",
-    "headNote": "the fork's HEAD advanced past 3522f57 with two docs-only commits (917f589 and 24f99c7). The shipped CODE is unchanged at 1.0.13; only NOTES.md / RESULT.json / CHANGELOG files moved. A lead-provided manifest quoting 24f99c7 and this file quoting 3522f57 therefore describe the same artifact.",
-    "deliveredAsOfThisBlock": "1.0.13, code commit 3522f57, HEAD 24f99c7"
+    "headAtHandoff": "not pinned - see codeCommit",
+    "headNote": "This fork's HEAD cannot be pinned by quoting docs commits, because every documentation edit to NOTES.md / RESULT.json / CHANGELOG advances it again. Pin the CODE: commit 3522f57 carries the entire 1.0.13 delta and every docs commit after it (917f589, 24f99c7, 3292a4b, 6777e94, 7c0e39c) touches only NOTES.md / RESULT.json / CHANGELOG. `git diff 3522f57..<any-later-head> -- ':!NOTES.md' ':!RESULT.json' ':!CHANGELOG.md' ':!CHANGELOG.zh-CN.md'` is empty. A lead-provided manifest quoting a later HEAD and this file quoting 3522f57 therefore describe the same artifact. HEAD as of the last docs commit written here: 7c0e39c (a RESULT.json syntax repair - see docsFix below).",
+    "docsFix": "An earlier docs commit (6777e94) shipped RESULT.json with a broken evidence array (missing comma after evidence[7], so the file did not parse). Fixed in 7c0e39c, which also corrected a wrong count: the committed build output is 11 lib/*.js files, not 12.",
+    "codeCommit": "3522f57",
+    "deliveredAsOfThisBlock": "1.0.13, code commit 3522f57, HEAD 7c0e39c"
   },
   "evidence": [
     {
