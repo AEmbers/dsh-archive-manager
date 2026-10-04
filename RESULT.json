@@ -2,21 +2,26 @@
   "repo": "MichengAI/dsh-archive-manager",
   "package": "@michengai/dsh-archive-manager",
   "upstreamVersion": "1.0.11",
-  "fixedVersion": "1.0.12",
+  "fixedVersion": "1.0.13",
   "fork": "github:AEmbers/dsh-archive-manager",
   "forkUrl": "https://github.com/AEmbers/dsh-archive-manager",
-  "commit": "21e0a98",
+  "commit": "3522f57",
+  "previousCommit": "21e0a98",
   "localClone": "C:\\Sophia\\_compat021\\work\\dsh-archive-manager",
   "status": "fixed",
-  "verdict": "both cores pass: install gate clean + client half mounted",
+  "verdict": "both cores pass: install gate clean + client half mounted + real browser UI renders the plugin's own panel",
   "changes": [
-    "package.json: version 1.0.11 -> 1.0.12",
+    "package.json: version 1.0.11 -> 1.0.12 -> 1.0.13",
     "package.json: added engines.dsh = \">=0.1.2-alpha.1\" (was absent)",
     "package.json: added dsh.compatibility = { dsh: \">=0.1.2-alpha.1\", dshReleases: {...} }",
     "package.json: dsh.compatibility.dshReleases lists 0.1.2-rc.1, 0.1.5-rc.1, 0.1.5-rc.2, 0.1.5-rc.3, 0.1.7-rc.1, 0.1.7-rc.2, 0.2.0-rc.1, 0.2.0-rc.2 AND 0.2.1-alpha.1 as compatible",
     "package.json: 17 peerDependencies exact-version whitelists replaced with \"*\"",
-    ".gitignore: /lib/ un-ignored; 11 built lib/*.js files committed (package has no prepare script, so a GitHub source install would otherwise have no main)",
-    "CHANGELOG.md + CHANGELOG.zh-CN.md: 1.0.12 entry"
+    "package.json (1.0.13): removed \"@deepseek-ai/dsh-client-runtime\" from peerDependencies and peerDependenciesMeta",
+    "src/client.ts (1.0.13): the require() fallback to the retired @deepseek-ai/dsh-client-runtime/client is gone; the bundle requires @deepseek-ai/dsh-client-store and throws a named error (\"@deepseek-ai/dsh-client-store is not available in this host (requires dsh >= 0.1.2-rc.1): <cause>\") when the host lacks it; the now-unused hasSplitClientStore flag was removed from exports.__test",
+    "src/client-types.ts (1.0.13): dropped the \"@deepseek-ai/dsh-client-runtime/client\" entry from interface ClientModules",
+    "test/client.test.mjs (1.0.13): legacyRequests/legacyBundle removed; the legacy-fallback test replaced with one asserting the bundle resolves the split client-store and never touches client-runtime; new test asserts a host without dsh-client-store fails loudly; the manifest test now asserts engines.dsh === \">=0.1.2-alpha.1\", a single \"*\" DSH peer range, dshReleases entries for 0.2.0-rc.2 and 0.2.1-alpha.1, and that no declared specifier names dsh-client-runtime or dsh-invariants; unused \"import semver\" removed",
+    ".gitignore: /lib/ un-ignored; 12 built lib/*.js files committed (package has no prepare script, so a GitHub source install would otherwise have no main)",
+    "CHANGELOG.md + CHANGELOG.zh-CN.md: 1.0.12 and 1.0.13 entries"
   ],
   "deletedSymbolAudit": {
     "checked": [
@@ -38,46 +43,66 @@
       "serviceForAgent"
     ],
     "sourceReferences": "none (whole-repo grep excluding node_modules/.git); the only hit was dsh-invariants as a devDependency in package.json, which is not gate-relevant and left untouched",
-    "dshClientRuntime": "referenced at src/client.ts:28 (inside the try/catch legacy fallback for DSH <= 0.1.1; not executed on 0.2.1-alpha.1 because dsh-client-store resolves) and src/client-types.ts:13 (type-only declaration). Package is absent from the 0.2.1-alpha.1 core. tsc --noEmit passes and the client half mounts, so both references were kept as-is."
+    "dshClientRuntime": "1.0.12 left it at src/client.ts:28 (legacy fallback try/catch) and src/client-types.ts:13. 1.0.13 removed both, because the fallback target is unreachable across the whole declared support range (>=0.1.2-alpha.1): 0.1.2 already seeds the split @deepseek-ai/dsh-client-store, and the retired package is absent from the 0.2.0-rc.2 and 0.2.1-alpha.1 cores.",
+    "intentionallyLeft": [
+      "test/helpers/client-store.mjs:24,30 — test infrastructure that only loads the legacy runtime when @deepseek-ai/dsh-client-store cannot be resolved; it exercises the harness, not the shipped bundle",
+      "scripts/test-version-matrix.mjs:43 — the two profile.runtime fixtures are 0.1.0-rc.8 / 0.1.1-rc.2, which this package stopped supporting in 1.0.8 (below the >=0.1.2-alpha.1 floor). Changing it is an upstream release-matrix scope decision and would need five legacy hosts installed over the network to verify; left as-is and flagged here."
+    ],
+    "incidentalFix": "the repo's own manifest test still asserted the pre-1.0.12 exact-version whitelist and was therefore already failing after 1.0.12; corrected in 1.0.13"
   },
   "evidence": [
     {
       "kind": "install-gate",
       "core": "dsh 0.2.1-alpha.1",
-      "command": "$env:DSH_HOME=\"C:\\Sophia\\_compat021\\home\"; node C:\\Sophia\\_compat021\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js plugin --profile web add github:AEmbers/dsh-archive-manager github:AEmbers/dsh-codekin",
-      "observed": "no 'is incompatible with dsh' rejection; '@michengai/dsh-archive-manager' resolved from git+https://github.com/AEmbers/dsh-archive-manager.git; installed version 1.0.12; Done in 1m 15.2s using pnpm v11.24.0"
+      "command": "$env:DSH_HOME=\"C:\\Sophia\\_compat021\\home\"; node C:\\Sophia\\_compat021\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js plugin --profile uiverify add github:AEmbers/dsh-archive-manager",
+      "observed": "no 'is incompatible with dsh' rejection; '+ @michengai/dsh-archive-manager github:AEmbers/dsh-archive-manager'; installed version 1.0.13"
     },
     {
       "kind": "install-gate",
       "core": "dsh 0.2.0-rc.2",
-      "command": "$env:DSH_HOME=\"C:\\Sophia\\_compat020\\home\"; node C:\\Sophia\\_compat020\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js plugin --profile fixgate020 add github:AEmbers/dsh-archive-manager github:AEmbers/dsh-codekin",
-      "observed": "no incompatibility rejection; Packages: +8; Done in 1m 8.4s using pnpm v11.24.0"
+      "command": "$env:DSH_HOME=\"C:\\Sophia\\_compat020\\home\"; node C:\\Sophia\\_compat020\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js plugin --profile fixgate020 add github:AEmbers/dsh-archive-manager",
+      "observed": "no incompatibility rejection; '+ @michengai/dsh-archive-manager github:AEmbers/dsh-archive-manager'; installed version 1.0.13"
+    },
+    {
+      "kind": "build",
+      "command": "pnpm build",
+      "observed": "exit 0; pnpm typecheck (tsc --noEmit) clean; '已从 src 生成 Host 与客户端发布产物'; check-package.mjs ok for package.json, all 12 lib files, cordis.patch.yml, LICENSE, both READMEs, both CHANGELOGs; 'package structure OK'"
+    },
+    {
+      "kind": "unit-tests",
+      "command": "pnpm test  (node --import tsx --test test/*.test.mjs)",
+      "observed": "tests 270 / pass 270 / fail 0 / duration_ms 121795; the rewritten client and manifest tests pass"
     },
     {
       "kind": "client-bundle-mounted",
       "core": "dsh 0.2.1-alpha.1",
-      "command": "pwsh -NoProfile -File C:\\Sophia\\_compat021\\verify-client-bundles.ps1 -Port 8911 -Profile web -Token <token> -Root C:\\Sophia\\_compat021",
-      "observed": "boot page HTTP 200, 50379 bytes; client modules mounted: 67; '@michengai/dsh-archive-manager' present in the server-rendered /plugins/??<pkg>/client.js list; perPlugin clientHalfMounted=true; VERDICT: PASS",
-      "report": "C:\\Sophia\\_compat021\\reports\\clientbundle-20261004-112141.json",
-      "bootLog": "C:\\Sophia\\_compat021\\reports\\boot-20261004-112123-fixgate-p8911.log"
+      "command": "pwsh -NoProfile -File C:\\Sophia\\_compat021\\work\\fixgate-boot-verify.ps1 -Root C:\\Sophia\\_compat021 -Port 8923 -Profile uiverify -Expect \"@michengai/dsh-archive-manager\",\"@nath-vikky/dsh-codekin\"",
+      "observed": "boot page HTTP 200, 36387 bytes; client modules mounted: 68; @michengai/dsh-archive-manager clientHalfMounted=True; @nath-vikky/dsh-codekin clientHalfMounted=True; VERDICT: PASS",
+      "report": "C:\\Sophia\\_compat021\\reports\\clientbundle-20261004-121952.json",
+      "bootLog": "C:\\Sophia\\_compat021\\reports\\boot-20261004-121938-fixgate-p8923.log.combined"
     },
     {
-      "kind": "client-bundle-mounted",
+      "kind": "browser-ui",
+      "core": "dsh 0.2.1-alpha.1",
+      "command": "pwsh -NoProfile -File C:\\Sophia\\_compat021\\work\\_uiverify\\ui-verify.ps1 -All",
+      "observed": "[PASS] archive-manager: #dsham-archive-panel rendered in settings tab \"归档会话\" with 24 chars of UI text (id=dsham-archive-panel); console errors 0, page errors 0, >=400 responses 0; nav probed 6 [通用设置 / 模型 / 内置插件 / 归档会话 / Agent 预设 / 码灵]",
+      "report": "C:\\Sophia\\_compat021\\work\\_uiverify\\out\\021-ui-verify.json"
+    },
+    {
+      "kind": "browser-ui",
       "core": "dsh 0.2.0-rc.2",
-      "command": "pwsh -NoProfile -File C:\\Sophia\\_compat021\\verify-client-bundles.ps1 -Port 8912 -Profile fixgate020 -Token <token> -Root C:\\Sophia\\_compat020",
-      "observed": "boot page HTTP 200, 35641 bytes; client modules mounted: 67; '@michengai/dsh-archive-manager' present; perPlugin clientHalfMounted=true; VERDICT: PASS; boot log has zero 'did not activate' entries",
-      "report": "C:\\Sophia\\_compat020\\reports\\clientbundle-20261004-112313.json",
-      "bootLog": "C:\\Sophia\\_compat020\\reports\\boot-20261004-112304-fixgate-p8912.log"
-    },
-    {
-      "kind": "build",
-      "command": "pnpm install --frozen-lockfile && pnpm build",
-      "observed": "exit 0; tsc --noEmit clean; '已从 src 生成 Host 与客户端发布产物'; package structure OK"
+      "command": "pwsh -NoProfile -File C:\\Sophia\\_compat021\\work\\_uiverify\\ui-verify.ps1 -All",
+      "observed": "[PASS] archive-manager: #dsham-archive-panel rendered in settings tab \"归档会话\" with 24 chars of UI text; console errors 0, page errors 0, >=400 responses 0",
+      "report": "C:\\Sophia\\_compat021\\work\\_uiverify\\out\\020-ui-verify.json"
     },
     {
       "kind": "github-source-install-has-artifacts",
-      "observed": "installed copy at C:\\Sophia\\_compat021\\home\\profiles\\web\\node_modules\\@michengai\\dsh-archive-manager\\lib contains all 11 built files (archive-discovery.js, archive-experience.js, archive-organizer.js, client.js, contracts.js, index.js, plugin-updater.js, projcache.js, session-repair.js, tombstone.js, workspace.js)"
+      "observed": "installed copies at C:\\Sophia\\_compat021\\home\\profiles\\uiverify\\node_modules\\@michengai\\dsh-archive-manager and C:\\Sophia\\_compat020\\home\\profiles\\fixgate020\\node_modules\\@michengai\\dsh-archive-manager each report version 1.0.13 and contain all 12 built lib/*.js files"
     }
+  ],
+  "notVerified": [
+    "write paths (actually archiving or deleting a session) are not end-to-end verified; the UI checks only render and read-only interaction",
+    "scripts/test-version-matrix.mjs:43 still exercises the pre-0.1.2 runtime fixtures"
   ],
   "notes": "NOTES.md",
   "constraints": {

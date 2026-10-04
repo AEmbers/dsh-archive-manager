@@ -3,8 +3,9 @@
 - 上游：`MichengAI/dsh-archive-manager`，包 `@michengai/dsh-archive-manager@1.0.11`
 - Fork：`AEmbers/dsh-archive-manager`（`github:AEmbers/dsh-archive-manager`）
 - 本地克隆：`C:\Sophia\_compat021\work\dsh-archive-manager`
-- 本次版本：`1.0.11` → `1.0.12`
-- 提交：`21e0a98 compat: declare DSH 0.2.1-alpha.1 support and ship lib/ in the git tree`（已 push 到 `origin/main`）
+- 本次版本：`1.0.11` → `1.0.12`（兼容声明 + `lib/` 入库）→ `1.0.13`（死引用清理）
+- 提交：`21e0a98 compat: declare DSH 0.2.1-alpha.1 support and ship lib/ in the git tree`
+  → `3522f57 compat: drop the retired dsh-client-runtime fallback (1.0.13)`（均已 push 到 `origin/main`）
 
 ## 1. 被拒原因（沙箱实测）
 
@@ -24,11 +25,11 @@
 
 | 位置 | 改前 | 改后 |
 |---|---|---|
-| `version` | `1.0.11` | `1.0.12` |
+| `version` | `1.0.11` | `1.0.12` → `1.0.13` |
 | `engines.dsh` | **不存在** | `">=0.1.2-alpha.1"` |
 | `dsh.compatibility` | **不存在** | `{ "dsh": ">=0.1.2-alpha.1", "dshReleases": { … } }` |
 | `dsh.compatibility.dshReleases` | — | `0.1.2-rc.1` / `0.1.5-rc.1` / `0.1.5-rc.2` / `0.1.5-rc.3` / `0.1.7-rc.1` / `0.1.7-rc.2` / `0.2.0-rc.1` / `0.2.0-rc.2` / **`0.2.1-alpha.1`**，全部 `"compatible"` |
-| `peerDependencies`（17 个 `@deepseek-ai/dsh-*` + `cordis`） | 逐版本白名单 | 一律 `"*"` |
+| `peerDependencies`（16 个 `@deepseek-ai/dsh-*` + `cordis`） | 逐版本白名单 | 一律 `"*"`；1.0.13 又删掉了 `@deepseek-ai/dsh-client-runtime` |
 
 `0.2.0-rc.1` 与 `0.2.0-rc.2` 两个键**保留**，`0.2.1-alpha.1` 是**新增**——即两代核心都显式声明为兼容，
 不是把旧的换成新的。区间下界取 `>=0.1.2-alpha.1`（本插件历史上支持的最早一线），因此比只写
@@ -50,7 +51,8 @@
 
 ### 2.3 `CHANGELOG.md` / `CHANGELOG.zh-CN.md`
 
-新增 `## 1.0.12 - 2026-10-04` 条目，说明兼容声明放宽范围与 `lib/` 入库两件事。
+新增 `## 1.0.12 - 2026-10-04`（兼容声明放宽 + `lib/` 入库）与 `## 1.0.13 - 2026-10-04`
+（清除已下线的 `@deepseek-ai/dsh-client-runtime`：不再静默回退，改为具名报错）两条条目。
 
 ## 3. 破坏了什么？（0.2.0-rc.2 → 0.2.1-alpha.1）
 
@@ -66,21 +68,56 @@
   （`pnpm install --frozen-lockfile` + `pnpm build`）本来就跑得通，所以**保持原样没动**——
   动它只会给构建引入风险，而构建产物与环境无关（`bundle: false`，`@deepseek-ai/*` 全部外部化由宿主提供）。
 
-### 3.1 单独查证：`dsh-client-runtime`（0.2.1-alpha.1 已不再发布）
+### 3.1 `dsh-client-runtime`（0.2.1-alpha.1 已不再发布）—— 1.0.13 已清除
 
 确认 `C:\Sophia\_compat021\node_modules\@deepseek-ai\` 下**没有** `dsh-client-runtime`。
-本包有两处提到它，逐条查证后判定**不是阻塞点**：
+本包原有两处提到它：
 
 - `src/client.ts:28` —
   `_deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-runtime/client");`
   位于 `try { require("@deepseek-ai/dsh-client-store") } catch { … }` 的 **catch 分支**里，
   是给 DSH ≤ 0.1.1 的兼容回退（注释原文："DSH <= 0.1.1 owns the store engine in client-runtime"）。
-  0.2.1-alpha.1 有 `dsh-client-store`，`try` 成功，这行**不会被执行**。
 - `src/client-types.ts:13` — 仅在 `interface ClientModules` 里做类型声明
   `"@deepseek-ai/dsh-client-runtime/client": typeof import("@deepseek-ai/dsh-client-store");`。
-  `tsc --noEmit` 实测无报错。
 
-两处都保留原样（保留了老宿主支持），并以「构建 + 类型检查通过」和「浏览器半边真被挂载」为证据。
+**1.0.12 时我判定它们不阻塞**（`tsc --noEmit` 干净、`try` 在 0.2.1-alpha.1 上成功、浏览器半边真被挂载），
+因此当时保留原样。复核后 1.0.13 把它们**删掉了**，理由是这个回退分支在**整段声明支持范围**
+（`>=0.1.2-alpha.1`）内**根本不可达**：
+
+- 拆分出来的 `@deepseek-ai/dsh-client-store` 是 **0.1.2 起**才有的，而本包 1.0.8 起就不支持 0.1.0/0.1.1，
+  所以「`dsh-client-store` 解析失败」这件事，对一个受支持的宿主来说不会发生；
+- 也就是说那条 catch 只会把错误伪装成「加载已下线包」，而不是把真实原因报出来。
+
+改法（而不是「删掉了事」）：
+
+```ts
+// src/client.ts —— 1.0.13
+try {
+  _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
+} catch (reason) {
+  throw new Error(
+    `@deepseek-ai/dsh-client-store is not available in this host (requires dsh >= 0.1.2-rc.1): `
+    + (reason instanceof Error ? reason.message : String(reason)),
+  );
+}
+```
+
+即**把原始错误带出来再抛**（含原始 `reason.message`），而不是回退到一个已下线的包。
+同时清掉了：`exports.__test` 里已无用的 `hasSplitClientStore` 标志、`src/client-types.ts:13` 的类型行、
+`package.json` 里 `peerDependencies` 与 `peerDependenciesMeta` 的 `@deepseek-ai/dsh-client-runtime`。
+测试同步改写（原来的 legacy-fallback 测试断言的就是被删的行为，必然变红），并**新增一条**
+「宿主没有 `dsh-client-store` 时必须显式报错、且绝不加载 `dsh-client-runtime`」。
+
+**有意不动**的两处（附理由）：
+
+- `test/helpers/client-store.mjs:24,30` —— 测试基础设施，只在 `dsh-client-store` 解析不到时才走，
+  它演练的是测试脚手架，不是发布出去的 bundle。
+- `scripts/test-version-matrix.mjs:43` —— 那里的两个 `profile.runtime` 档案是 `0.1.0-rc.8` / `0.1.1-rc.2`，
+  **本包 1.0.8 起就已声明不支持**（低于 `>=0.1.2-alpha.1` 下限）。改它属于上游发布矩阵的范围决策，
+  且需要联网装 5 个旧宿主才能验证 —— 在此无法验证，故保持原样并在此标注。
+
+顺带修掉的既存不一致：1.0.12 把 peer 白名单改成 `"*"` 之后，仓库自带的那条 manifest 测试
+（原第 397 行，断言旧白名单）**其实已经是红的**；1.0.13 一并改正。
 
 ## 4. 验证（沙箱实测，原始命令与输出）
 
@@ -177,9 +214,56 @@ pwsh -NoProfile -File C:\Sophia\_compat021\work\fixgate-boot-verify.ps1 `
 注意用 `Start-Process -RedirectStandardOutput <file>` 轮询日志取 token，不能直接读
 `Process.StandardOutput.ReadToEndAsync().Result`——那会在子进程退出前一直阻塞。）
 
+### 4.5 1.0.13 重验（死引用清理之后，全部重跑）
+
+因为 `lib/` 是**人工提交的构建产物**（不是构建期生成再发布），改源码后必须重建 + 重验，
+而且**没有复用 1.0.12 的 commit**（`21e0a98` → 新的 `3522f57`），让证据链对得上。
+
+```
+> pnpm build     # exit 0；tsc --noEmit 干净；12 个 lib/*.js；package structure OK
+> pnpm test      # tests 270 / pass 270 / fail 0 / duration_ms 121795
+```
+
+两侧都用 **GitHub 源码安装**（不是本地 link）重装到 `1.0.13`，再跑：
+
+```
+############ 021  (core=C:\Sophia\_compat021, profile=uiverify, port=8921) ############
+overlays cleared: 1; settings opened: true; nav probed: 6 [通用设置 / 模型 / 内置插件 / 归档会话 / Agent 预设 / 码灵]
+[PASS] archive-manager: #dsham-archive-panel rendered in settings tab "归档会话" with 24 chars of UI text (id=dsham-archive-panel)
+console errors: 0, page errors: 0, >=400 responses: 0
+
+############ 020  (core=C:\Sophia\_compat020, profile=fixgate020, port=8922) ############
+[PASS] archive-manager: #dsham-archive-panel rendered in settings tab "归档会话" with 24 chars of UI text
+console errors: 0, page errors: 0, >=400 responses: 0
+```
+
+（这就是「浏览器里真能用」那一层：不是在设置页里找一段字符串，而是**打开设置 → 点「归档会话」这一节
+→ 断言 `#dsham-archive-panel` 这个插件自己的面板真被渲染出来**，并且整个过程中 console 0 error。）
+
+额外一侧的 bundle 级复核（端口 8923，profile `uiverify`）：
+
+```
+boot page: HTTP 200, 36387 bytes
+client modules mounted: 68
+@michengai/dsh-archive-manager   clientHalfMounted = True
+@nath-vikky/dsh-codekin          clientHalfMounted = True
+VERDICT: PASS
+report: C:\Sophia\_compat021\reports\clientbundle-20261004-121952.json
+```
+
+一键复跑：
+
+```powershell
+pwsh -NoProfile -File C:\Sophia\_compat021\work\_uiverify\ui-verify.ps1 -All     # exit 0，两侧都跑
+```
+
 ## 5. 遗留 / 未做
 
 - 未向上游提 PR（按铁律）。
 - 未发布到 npm；交付物是 fork 的 GitHub 源码（`github:AEmbers/dsh-archive-manager`）。
 - 未改 `C:\Users\Administrator\.dsh\`。
 - `repository` / `homepage` / `bugs` 仍指向上游，便于溯源与反馈；如需改指 fork 请告知。
+- **写路径未端到端验证**：UI 验证只覆盖「渲染 + 只读交互」（打开设置、切页签、看空状态），
+  没有真的去归档/删除一条会话。所以「归档业务数据流在 0.2.1-alpha.1 上端到端正确」这句话
+  **在本记录的证据之外**，不要由本文件替它背书。
+- `scripts/test-version-matrix.mjs:43` 仍指向 0.1.0-rc.8 / 0.1.1-rc.2 两个已声明不支持的档案（理由见 §3.1）。
