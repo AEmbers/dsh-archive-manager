@@ -12,7 +12,6 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import semver from "semver";
 
 const FALLBACK = fileURLToPath(new URL("../node_modules", import.meta.url));
 
@@ -91,14 +90,6 @@ const bundle = materialize("@michengai/dsh-archive-manager", {
 	staticModules: {
 		...statics,
 		"@deepseek-ai/dsh-client-store": { defineStore }
-	}
-});
-const legacyRequests = [];
-const legacyBundle = materialize("@michengai/dsh-archive-manager", {
-	requests: legacyRequests,
-	staticModules: {
-		...statics,
-		"@deepseek-ai/dsh-client-runtime/client": { defineStore }
 	}
 });
 
@@ -372,19 +363,30 @@ test("forked row stylesheet does not reuse the official workspace class prefix",
 	assert.equal(injected.includes("@michengai/dsh-archive-manager/WorkspacePicker.module.css"), false);
 });
 
-test("bundle resolves the current client-store and keeps the legacy fallback", () => {
+test("bundle resolves the split client-store and never touches the removed client-runtime package", () => {
 	assert.equal(alphaRequests.includes("@deepseek-ai/dsh-client-store"), true);
 	assert.equal(alphaRequests.includes("@deepseek-ai/dsh-client-runtime/client"), false);
-	assert.equal(legacyRequests.includes("@deepseek-ai/dsh-client-store"), true);
-	assert.equal(legacyRequests.includes("@deepseek-ai/dsh-client-runtime/client"), true);
 	assert.equal(typeof bundle.__test.createWorkspaceViewStore().create, "function");
-	assert.equal(typeof legacyBundle.__test.createWorkspaceViewStore().create, "function");
-	assert.equal(bundle.__test.hasSplitClientStore, true);
-	assert.equal(legacyBundle.__test.hasSplitClientStore, false);
 });
 
-test("manifest keeps one DSH peer range and both client contracts optional", () => {
+test("a host without dsh-client-store fails loudly instead of loading the removed client-runtime package", () => {
+	// 0.1.2-rc.1 起 client-store 是独立包，dsh-client-runtime 已下线；
+	// 缺少 client-store 时应当把原因带出来，而不是回退到一个不存在的包。
+	assert.throws(
+		() => materialize("@michengai/dsh-archive-manager", {
+			requests: [],
+			staticModules: {
+				...statics,
+				"@deepseek-ai/dsh-client-runtime/client": { defineStore }
+			}
+		}),
+		/@deepseek-ai\/dsh-client-store is not available in this host/
+	);
+});
+
+test("manifest declares one open DSH peer range and both client contracts optional", () => {
 	assert.equal(PACKAGE_MANIFEST.engines?.node, "^22.19.0 || >=24.0.0");
+	assert.equal(PACKAGE_MANIFEST.engines?.dsh, ">=0.1.2-alpha.1");
 	assert.equal(PACKAGE_MANIFEST.packageManager, "pnpm@11.22.0");
 	const dshPeerRanges = Object.entries(PACKAGE_MANIFEST.peerDependencies ?? {})
 		.filter(([name]) => name.startsWith("@deepseek-ai/dsh-"))
@@ -394,17 +396,25 @@ test("manifest keeps one DSH peer range and both client contracts optional", () 
 		.map(([, version]) => version);
 	assert.ok(dshPeerRanges.length > 0);
 	assert.equal(new Set(dshPeerRanges).size, 1);
-	assert.equal(dshPeerRanges[0], "0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.5-rc.3 || 0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2");
-	for (const version of ["0.1.2-rc.1", "0.1.5-rc.1", "0.1.5-rc.2", "0.1.5-rc.3", "0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1", "0.2.0-rc.2"]) {
-		assert.ok(semver.satisfies(version, dshPeerRanges[0]), `peer 范围必须接纳已验证宿主 ${version}`);
-	}
-	for (const version of ["0.1.0-rc.5", "0.1.0-rc.8", "0.1.0-rc.9", "0.1.1-rc.2", "0.1.3-alpha.2", "0.1.5", "0.1.6", "0.1.6-alpha.1", "0.1.6-alpha.2", "0.1.7-alpha.1", "0.1.7-rc.3", "0.1.7", "0.2.0", "0.2.0-rc.3"]) {
-		assert.equal(semver.satisfies(version, dshPeerRanges[0]), false, `不接纳未声明版本 ${version}`);
-	}
+	// 0.2.1-alpha.1 的安装闸门只读 peerDependencies，并以 semver.satisfies(..., { includePrerelease: true })
+	// 判定（dsh-app-boot/lib/index.js:286-313）。开放区间才能同时接纳 0.2.0-rc.x 与 0.2.1-alpha.x 两代。
+	assert.equal(dshPeerRanges[0], "*");
+	// 两代核心都必须被显式声明为兼容，过渡期不能只声明 0.2.1。
+	assert.equal(PACKAGE_MANIFEST.dsh.compatibility.dsh, ">=0.1.2-alpha.1");
+	assert.equal(PACKAGE_MANIFEST.dsh.compatibility.dshReleases["0.2.0-rc.2"], "compatible");
+	assert.equal(PACKAGE_MANIFEST.dsh.compatibility.dshReleases["0.2.1-alpha.1"], "compatible");
+	// dsh-client-runtime 在 0.2.1-alpha.1 已下线：不得再出现在任何会指向它的声明里。
+	const declaredSpecifiers = [
+		...Object.keys(PACKAGE_MANIFEST.peerDependencies ?? {}),
+		...Object.keys(PACKAGE_MANIFEST.peerDependenciesMeta ?? {}),
+		...Object.keys(PACKAGE_MANIFEST.dependencies ?? {}),
+		...(PACKAGE_MANIFEST.dsh?.client?.inject ?? [])
+	];
+	assert.equal(declaredSpecifiers.includes("@deepseek-ai/dsh-client-runtime"), false);
+	assert.equal(declaredSpecifiers.includes("@deepseek-ai/dsh-invariants"), false);
 	assert.ok(dshDevelopmentVersions.length > 0);
 	assert.deepEqual([...new Set(dshDevelopmentVersions)], ["0.2.0-rc.2"]);
 	assert.equal(PACKAGE_MANIFEST.peerDependenciesMeta?.["@deepseek-ai/dsh-client-store"]?.optional, true);
-	assert.equal(PACKAGE_MANIFEST.peerDependenciesMeta?.["@deepseek-ai/dsh-client-runtime"]?.optional, true);
 	assert.equal(PACKAGE_MANIFEST.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"), false);
 });
 

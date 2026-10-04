@@ -18,14 +18,14 @@ export function startArchiveClient(require: HostRequire) {
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		let _deepseek_ai_dsh_client_store: typeof import("@deepseek-ai/dsh-client-store");
-		let hasSplitClientStore = true;
 		try {
 			_deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
-		} catch {
-			// DSH <= 0.1.1 owns the store engine in client-runtime; 0.1.2+
-			// seeds the split client-store package directly into the module table.
-			hasSplitClientStore = false;
-			_deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-runtime/client");
+		} catch (reason) {
+			// Every supported host (>= 0.1.2-rc.1) seeds the split client-store package into the
+			// module table. The pre-0.1.2 layout kept the store engine in `dsh-client-runtime`,
+			// which no longer exists, so there is nothing to fall back to: surface the real cause
+			// instead of silently loading a package that is gone.
+			throw new Error(`@deepseek-ai/dsh-client-store is not available in this host (requires dsh >= 0.1.2-rc.1): ${reason instanceof Error ? reason.message : String(reason)}`);
 		}
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
@@ -4446,7 +4446,6 @@ export function startArchiveClient(require: HostRequire) {
 			WORKSPACE_VIEW_PERSIST_KEY,
 			LEGACY_WORKSPACE_VIEW_PERSIST_KEY,
 			bindObservable,
-			hasSplitClientStore,
 			groupByWorkspace,
 			byRecency,
 			ARCHIVE_MANAGER_REMOTE,

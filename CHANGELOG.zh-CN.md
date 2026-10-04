@@ -4,6 +4,12 @@
 
 以下发布说明会持续保留；新增版本时不再删除较早记录。
 
+## 1.0.13 - 2026-10-04
+
+- 清掉对已下线包 `@deepseek-ai/dsh-client-runtime` 的最后一处引用。客户端包现在直接解析拆分出来的 `@deepseek-ai/dsh-client-store`。
+- 宿主缺少 `@deepseek-ai/dsh-client-store` 时会抛出具名错误，而不再静默回退到一个已经不再发布的包。该回退分支在整段声明支持范围（`>=0.1.2-alpha.1`）内本就不可达——0.1.2 起就已经有拆分出来的 client-store。
+- `peerDependencies` 与 `peerDependenciesMeta` 不再声明 `@deepseek-ai/dsh-client-runtime`。
+
 ## 1.0.12 - 2026-10-04
 
 - 适配 DSH 0.2.1-alpha.1。`engines.dsh`、`dsh.compatibility`（含显式 `0.2.1-alpha.1` 条目）与 `peerDependencies` 现在同时覆盖 `0.2.0-rc.x` 与 `0.2.1-alpha.x` 两代，0.2.1-alpha.1 的安装闸门不再拒绝本包。`0.2.0-rc.1`/`0.2.0-rc.2` 仍然保留声明，0.1.2-rc.1 起的既有受支持版本也不受影响。

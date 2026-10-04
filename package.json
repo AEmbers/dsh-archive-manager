@@ -1,6 +1,6 @@
 {
   "name": "@michengai/dsh-archive-manager",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "NPM-installable DSH Web plugin for managing archived sessions.",
   "type": "module",
   "packageManager": "pnpm@11.22.0",
@@ -43,7 +43,6 @@
     "@deepseek-ai/cordis": "*",
     "@deepseek-ai/dsh-client-connection": "*",
     "@deepseek-ai/dsh-client-locale": "*",
-    "@deepseek-ai/dsh-client-runtime": "*",
     "@deepseek-ai/dsh-client-store": "*",
     "@deepseek-ai/dsh-client-ui-conversation": "*",
     "@deepseek-ai/dsh-client-ui-primitives": "*",
@@ -60,9 +59,6 @@
     "@deepseek-ai/dsh-workspace": "*"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-client-runtime": {
-      "optional": true
-    },
     "@deepseek-ai/dsh-session-format-catalog": {
       "optional": true
     },

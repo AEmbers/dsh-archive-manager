@@ -4,6 +4,12 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.13 - 2026-10-04
+
+- Removed the last reference to the retired `@deepseek-ai/dsh-client-runtime` package. The client bundle now resolves the split `@deepseek-ai/dsh-client-store` directly.
+- A host without `@deepseek-ai/dsh-client-store` now fails with a named error instead of silently falling back to a package that no longer ships. The fallback branch was already unreachable across the whole declared support range (`>=0.1.2-alpha.1`), because 0.1.2 seeds the split client-store.
+- `peerDependencies` and `peerDependenciesMeta` no longer name `@deepseek-ai/dsh-client-runtime`.
+
 ## 1.0.12 - 2026-10-04
 
 - Works with DSH 0.2.1-alpha.1. `engines.dsh`, `dsh.compatibility` (with an explicit `0.2.1-alpha.1` release entry) and `peerDependencies` now span the `0.2.0-rc.x` and `0.2.1-alpha.x` lines, so the 0.2.1-alpha.1 install gate no longer rejects the package. `0.2.0-rc.1`/`0.2.0-rc.2` stay declared, and every supported version from 0.1.2-rc.1 onward still passes.
