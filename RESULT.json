@@ -48,7 +48,13 @@
       "test/helpers/client-store.mjs:24,30 — test infrastructure that only loads the legacy runtime when @deepseek-ai/dsh-client-store cannot be resolved; it exercises the harness, not the shipped bundle",
       "scripts/test-version-matrix.mjs:43 — the two profile.runtime fixtures are 0.1.0-rc.8 / 0.1.1-rc.2, which this package stopped supporting in 1.0.8 (below the >=0.1.2-alpha.1 floor). Changing it is an upstream release-matrix scope decision and would need five legacy hosts installed over the network to verify; left as-is and flagged here."
     ],
-    "incidentalFix": "the repo's own manifest test still asserted the pre-1.0.12 exact-version whitelist and was therefore already failing after 1.0.12; corrected in 1.0.13"
+    "incidentalFix": "the repo's own manifest test was already failing after 1.0.12, and nobody noticed: it asserted the pre-1.0.12 exact-version peer whitelist, so replacing those whitelists with \"*\" turned it red. Original assertion: the test collected every declared @deepseek-ai/* peer range and asserted it equalled the old per-version whitelist string (the assertion that used to sit near test/client.test.mjs:397, i.e. 'manifest declares the exact supported DSH peer versions'). Why it went red: the whitelist strings no longer exist in package.json, so the comparison could not hold. What it asserts now: engines.dsh === \">=0.1.2-alpha.1\", exactly one distinct DSH peer range and that it is \"*\", dsh.compatibility.dsh === \">=0.1.2-alpha.1\", dshReleases entries for 0.2.0-rc.2 and 0.2.1-alpha.1 are \"compatible\", no declared specifier (peers + meta + dependencies + dsh.client.inject) names dsh-client-runtime or dsh-invariants, devDependencies still resolve to [\"0.2.0-rc.2\"], and peerDependenciesMeta[\"@deepseek-ai/dsh-client-store\"].optional === true. Lesson for every fork in this batch: changing peerDependencies invalidates the upstream repo's own manifest assertions, so re-run the repo's test suite, not just the install gate."
+  },
+  "verificationTimeline": {
+    "note": "the independent verifier (task D) reviewed archive-manager at 1.0.12 / commit 21e0a98. The final deliverable is 1.0.13 / commit 3522f57. The 1.0.13 delta is the dsh-client-runtime removal described above; it was re-built, re-tested (270/270), re-installed from GitHub source and re-verified in the browser on both cores after the change, but that re-verification was run by fix-gate, not by the verifier.",
+    "verifierReviewed": { "version": "1.0.12", "commit": "21e0a98" },
+    "finalDeliverable": { "version": "1.0.13", "commit": "3522f57", "docsCommit": "917f589" },
+    "deliveredAsOfThisBlock": "1.0.13 / 3522f57 (docs 917f589)"
   },
   "evidence": [
     {
