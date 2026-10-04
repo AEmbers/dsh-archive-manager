@@ -4,6 +4,12 @@
 
 以下发布说明会持续保留；新增版本时不再删除较早记录。
 
+## 1.0.12 - 2026-10-04
+
+- 适配 DSH 0.2.1-alpha.1。`engines.dsh`、`dsh.compatibility`（含显式 `0.2.1-alpha.1` 条目）与 `peerDependencies` 现在同时覆盖 `0.2.0-rc.x` 与 `0.2.1-alpha.x` 两代，0.2.1-alpha.1 的安装闸门不再拒绝本包。`0.2.0-rc.1`/`0.2.0-rc.2` 仍然保留声明，0.1.2-rc.1 起的既有受支持版本也不受影响。
+- `peerDependencies` 的逐版本白名单改为 `*` 区间，与当前官方插件的 DSH peer 声明方式一致。
+- 构建产物 `lib/` 纳入 git 跟踪，因此 `dsh plugin add github:AEmbers/dsh-archive-manager` 无需再跑构建即可安装。
+
 ## 1.0.11 - 2026-10-01
 
 - 批量删除已归档会话改为一次存储列举、一次宿主调用。已删除的会话不会被写回内存索引。

@@ -1,6 +1,8 @@
+# lib/ 是构建产物，但必须入库：GitHub 源码安装不会跑构建脚本，
+# 产物缺失时 package.json 的 main 解析不到，插件直接装不起来（见 CHANGELOG 1.0.12）。
+
 # 依赖与构建缓存
 node_modules/
-/lib/
 *.tsbuildinfo
 *.tgz
 pnpm-debug.log*

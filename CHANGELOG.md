@@ -4,6 +4,12 @@
 
 Published release notes are retained below; new versions are added without removing earlier entries.
 
+## 1.0.12 - 2026-10-04
+
+- Works with DSH 0.2.1-alpha.1. `engines.dsh`, `dsh.compatibility` (with an explicit `0.2.1-alpha.1` release entry) and `peerDependencies` now span the `0.2.0-rc.x` and `0.2.1-alpha.x` lines, so the 0.2.1-alpha.1 install gate no longer rejects the package. `0.2.0-rc.1`/`0.2.0-rc.2` stay declared, and every supported version from 0.1.2-rc.1 onward still passes.
+- The `peerDependencies` exact-version whitelists were replaced with `*` ranges, matching how the current official plugins declare their DSH peers.
+- The built `lib/` output is now tracked in git, so `dsh plugin add github:AEmbers/dsh-archive-manager` installs without running a build.
+
 ## 1.0.11 - 2026-10-01
 
 - Batch delete of archived sessions now uses one storage listing and one host call. Deleted sessions are not put back into the in-memory index.
