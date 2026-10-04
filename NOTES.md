@@ -220,7 +220,7 @@ pwsh -NoProfile -File C:\Sophia\_compat021\work\fixgate-boot-verify.ps1 `
 而且**没有复用 1.0.12 的 commit**（`21e0a98` → 新的 `3522f57`），让证据链对得上。
 
 ```
-> pnpm build     # exit 0；tsc --noEmit 干净；12 个 lib/*.js；package structure OK
+> pnpm build     # exit 0；tsc --noEmit 干净；11 个 lib/*.js；package structure OK
 > pnpm test      # tests 270 / pass 270 / fail 0 / duration_ms 121795
 ```
 

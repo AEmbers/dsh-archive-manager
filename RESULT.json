@@ -20,7 +20,7 @@
     "src/client.ts (1.0.13): the require() fallback to the retired @deepseek-ai/dsh-client-runtime/client is gone; the bundle requires @deepseek-ai/dsh-client-store and throws a named error (\"@deepseek-ai/dsh-client-store is not available in this host (requires dsh >= 0.1.2-rc.1): <cause>\") when the host lacks it; the now-unused hasSplitClientStore flag was removed from exports.__test",
     "src/client-types.ts (1.0.13): dropped the \"@deepseek-ai/dsh-client-runtime/client\" entry from interface ClientModules",
     "test/client.test.mjs (1.0.13): legacyRequests/legacyBundle removed; the legacy-fallback test replaced with one asserting the bundle resolves the split client-store and never touches client-runtime; new test asserts a host without dsh-client-store fails loudly; the manifest test now asserts engines.dsh === \">=0.1.2-alpha.1\", a single \"*\" DSH peer range, dshReleases entries for 0.2.0-rc.2 and 0.2.1-alpha.1, and that no declared specifier names dsh-client-runtime or dsh-invariants; unused \"import semver\" removed",
-    ".gitignore: /lib/ un-ignored; 12 built lib/*.js files committed (package has no prepare script, so a GitHub source install would otherwise have no main)",
+    ".gitignore: /lib/ un-ignored; 11 built lib/*.js files committed (package has no prepare script, so a GitHub source install would otherwise have no main)",
     "CHANGELOG.md + CHANGELOG.zh-CN.md: 1.0.12 and 1.0.13 entries"
   ],
   "deletedSymbolAudit": {
@@ -74,7 +74,7 @@
     {
       "kind": "build",
       "command": "pnpm build",
-      "observed": "exit 0; pnpm typecheck (tsc --noEmit) clean; '已从 src 生成 Host 与客户端发布产物'; check-package.mjs ok for package.json, all 12 lib files, cordis.patch.yml, LICENSE, both READMEs, both CHANGELOGs; 'package structure OK'"
+      "observed": "exit 0; pnpm typecheck (tsc --noEmit) clean; '已从 src 生成 Host 与客户端发布产物'; check-package.mjs ok for package.json, all 11 lib files, cordis.patch.yml, LICENSE, both READMEs, both CHANGELOGs; 'package structure OK'"
     },
     {
       "kind": "unit-tests",
@@ -105,8 +105,8 @@
     },
     {
       "kind": "github-source-install-has-artifacts",
-      "observed": "installed copies at C:\\Sophia\\_compat021\\home\\profiles\\uiverify\\node_modules\\@michengai\\dsh-archive-manager and C:\\Sophia\\_compat020\\home\\profiles\\fixgate020\\node_modules\\@michengai\\dsh-archive-manager each report version 1.0.13 and contain all 12 built lib/*.js files"
-    }
+      "observed": "installed copies at C:\\Sophia\\_compat021\\home\\profiles\\uiverify\\node_modules\\@michengai\\dsh-archive-manager and C:\\Sophia\\_compat020\\home\\profiles\\fixgate020\\node_modules\\@michengai\\dsh-archive-manager each report version 1.0.13 and contain all 11 built lib/*.js files"
+    },
     {
       "kind": "write-operation",
       "core": "dsh 0.2.1-alpha.1",
